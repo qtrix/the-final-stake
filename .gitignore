@@ -1,39 +1,62 @@
-# dependencies
-/node_modules
-
-# production build
-/dist
-/build
-/.netlify
-
-# IDE & editor
-.vscode/
-.idea/
-*.swp
-
-# system files
-.DS_Store
-Thumbs.db
-
-# logs & debug
+# Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.log
+lerna-debug.log*
 
-# environment variables
+# Dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# typescript
-*.tsbuildinfo
+# Vite
+.vite
 
-# cache
-/.parcel-cache
-/.eslintcache
-/.stylelintcache
-/.vite
+# Build outputs
+build
+dist
+
+# Testing
+coverage
+*.lcov
+.nyc_output
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+
+# Lock files (optional - uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Tailwind
+# (Usually not needed, but if you generate custom configs)
+# tailwind.config.js.bac
