@@ -1,0 +1,326 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes float-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-100px) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+.futuristic-hero-text {
+  background: linear-gradient(135deg, #6a0dad, #ff5e00, #6a0dad);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 3s ease infinite;
+  filter: drop-shadow(0 0 8px rgba(106, 13, 173, 0.3));
+  letter-spacing: 0.1em;
+}
+
+/* Wallet Button Futuristic Styling */
+.wallet-adapter-button {
+  background: linear-gradient(135deg, #6a0dad, #ff5e00) !important;
+  border-radius: 9999px !important;
+  padding: 0.5rem 1.5rem !important;
+  font-weight: 700 !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.wallet-adapter-button:hover {
+  box-shadow: 0 0 30px rgba(106, 13, 173, 0.6), 0 0 50px rgba(255, 94, 0, 0.4) !important;
+  transform: translateY(-2px) !important;
+}
+
+.wallet-adapter-button-trigger {
+  background: linear-gradient(135deg, #6a0dad, #ff5e00) !important;
+  border-radius: 9999px !important;
+}
+
+/* Wallet Modal Redesign */
+.wallet-adapter-modal-wrapper {
+  background: rgba(0, 0, 0, 0.9) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.wallet-adapter-modal {
+  background: linear-gradient(135deg, hsl(280, 100%, 8%), hsl(15, 100%, 8%)) !important;
+  border-radius: 1.5rem !important;
+  border: 2px solid hsl(280, 100%, 25%) !important;
+  box-shadow: 0 25px 50px -12px rgba(106, 13, 173, 0.5), 0 0 100px rgba(255, 94, 0, 0.2) !important;
+  max-width: 420px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.wallet-adapter-modal-title {
+  font-size: 1.75rem !important;
+  font-weight: 800 !important;
+  color: hsl(0, 0%, 95%) !important;
+  text-align: center !important;
+  padding: 2rem 2rem 0.5rem !important;
+  margin: 0 !important;
+  background: linear-gradient(135deg, #6a0dad, #ff5e00) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+.wallet-adapter-modal-button-close {
+  background: hsl(280, 100%, 15%) !important;
+  border: 1px solid hsl(280, 100%, 25%) !important;
+  color: hsl(0, 0%, 90%) !important;
+  border-radius: 50% !important;
+  width: 36px !important;
+  height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.3s ease !important;
+  top: 1rem !important;
+  right: 1rem !important;
+}
+
+.wallet-adapter-modal-button-close:hover {
+  background: hsl(0, 84%, 60%) !important;
+  border-color: hsl(0, 84%, 70%) !important;
+  transform: rotate(90deg) !important;
+}
+
+.wallet-adapter-modal-list {
+  padding: 1.5rem !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.75rem !important;
+}
+
+.wallet-adapter-modal-list-more {
+  background: linear-gradient(135deg, hsl(280, 100%, 12%), hsl(15, 100%, 12%)) !important;
+  border: 1px solid hsl(280, 100%, 20%) !important;
+  border-radius: 0.75rem !important;
+  padding: 0.75rem 1rem !important;
+  color: hsl(15, 100%, 60%) !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+  cursor: pointer !important;
+  text-align: center !important;
+}
+
+.wallet-adapter-modal-list-more:hover {
+  background: linear-gradient(135deg, hsl(280, 100%, 15%), hsl(15, 100%, 15%)) !important;
+  border-color: hsl(15, 100%, 50%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 25px -5px rgba(255, 94, 0, 0.3) !important;
+}
+
+.wallet-adapter-modal-list li {
+  background: linear-gradient(135deg, hsl(280, 100%, 10%), hsl(15, 100%, 8%)) !important;
+  border: 1px solid hsl(280, 100%, 20%) !important;
+  border-radius: 0.75rem !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  transition: all 0.3s ease !important;
+  overflow: hidden !important;
+}
+
+.wallet-adapter-modal-list li:hover {
+  border-color: hsl(15, 100%, 50%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 25px -5px rgba(106, 13, 173, 0.4) !important;
+}
+
+.wallet-adapter-button:not([disabled]):hover {
+  background: linear-gradient(135deg, #6a0dad, #ff5e00) !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: transparent !important;
+  border: none !important;
+  padding: 1rem !important;
+  width: 100% !important;
+  border-radius: 0.75rem !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  color: hsl(0, 0%, 95%) !important;
+  justify-content: flex-start !important;
+  gap: 1rem !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: linear-gradient(135deg, hsl(280, 100%, 15%), hsl(15, 100%, 12%)) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.wallet-adapter-button-start-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  margin-right: 0 !important;
+}
+
+.wallet-adapter-button-start-icon img {
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 0.5rem !important;
+}
+
+.wallet-adapter-modal-middle {
+  padding: 0.5rem 2rem 1rem !important;
+  text-align: center !important;
+  color: hsl(0, 0%, 70%) !important;
+  font-size: 0.875rem !important;
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 10 10% 5%;
+    --foreground: 0 0% 90%;
+
+    --card: 280 100% 5%;
+    --card-foreground: 0 0% 90%;
+
+    --popover: 280 100% 5%;
+    --popover-foreground: 0 0% 90%;
+
+    --primary: 280 100% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 15 100% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 280 50% 15%;
+    --muted-foreground: 0 0% 70%;
+
+    --accent: 280 100% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 280 100% 15%;
+    --input: 280 100% 10%;
+    --ring: 280 100% 35%;
+
+    --radius: 0.75rem;
+
+    /* Futuristic gradient colors */
+    --gradient-primary: 280 100% 35%;
+    --gradient-secondary: 15 100% 50%;
+    --glass-bg: 280 100% 35% / 0.1;
+    --glass-border: 280 100% 35% / 0.3;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 10 10% 5%;
+    --foreground: 0 0% 90%;
+
+    --card: 280 100% 5%;
+    --card-foreground: 0 0% 90%;
+
+    --popover: 280 100% 5%;
+    --popover-foreground: 0 0% 90%;
+
+    --primary: 280 100% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 15 100% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 280 50% 15%;
+    --muted-foreground: 0 0% 70%;
+
+    --accent: 280 100% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 280 100% 15%;
+    --input: 280 100% 10%;
+    --ring: 280 100% 35%;
+
+    /* Futuristic gradient colors */
+    --gradient-primary: 280 100% 35%;
+    --gradient-secondary: 15 100% 50%;
+    --glass-bg: 280 100% 35% / 0.1;
+    --glass-border: 280 100% 35% / 0.3;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

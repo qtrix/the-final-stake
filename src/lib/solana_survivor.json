@@ -1,0 +1,759 @@
+{
+  "address": "9piTJQs5dZT9wqu1Fx7cK1CGfTypYa8SGrVhgLnx2JhX",
+  "metadata": {
+    "name": "solana_survivor",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "claim_refund",
+      "docs": [
+        "Claim refund pentru jocuri expirate - VERSIUNE CORECTATĂ"
+      ],
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_game_account",
+      "docs": [
+        "Închide game account și returnează rent (după ce toți au luat refund)"
+      ],
+      "discriminator": [
+        146,
+        113,
+        124,
+        60,
+        208,
+        61,
+        239,
+        201
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_game",
+      "docs": [
+        "Creează un joc nou - creatorul plătește automat entry fee"
+      ],
+      "discriminator": [
+        124,
+        69,
+        75,
+        66,
+        184,
+        220,
+        72,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_registry.game_count",
+                "account": "GameRegistry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_name",
+          "type": "string"
+        },
+        {
+          "name": "entry_fee",
+          "type": "u64"
+        },
+        {
+          "name": "max_players",
+          "type": "u8"
+        },
+        {
+          "name": "start_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "creator_cancel_game",
+      "docs": [
+        "Creatorul își poate recupera banii dacă nu sunt suficienți jucători"
+      ],
+      "discriminator": [
+        217,
+        224,
+        38,
+        0,
+        79,
+        68,
+        241,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "enter_game",
+      "docs": [
+        "Intră într-un joc existent"
+      ],
+      "discriminator": [
+        157,
+        184,
+        173,
+        203,
+        193,
+        117,
+        106,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize",
+      "docs": [
+        "Inițializează programul - se apelează o singură dată"
+      ],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "game_registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_game",
+      "docs": [
+        "Pornește jocul - doar creatorul poate da start"
+      ],
+      "discriminator": [
+        249,
+        47,
+        252,
+        172,
+        184,
+        162,
+        245,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Game",
+      "discriminator": [
+        27,
+        90,
+        166,
+        125,
+        74,
+        100,
+        121,
+        18
+      ]
+    },
+    {
+      "name": "GameRegistry",
+      "discriminator": [
+        24,
+        88,
+        182,
+        125,
+        149,
+        163,
+        9,
+        71
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "GameCancelled",
+      "discriminator": [
+        113,
+        20,
+        200,
+        104,
+        76,
+        35,
+        9,
+        241
+      ]
+    },
+    {
+      "name": "GameCreated",
+      "discriminator": [
+        218,
+        25,
+        150,
+        94,
+        177,
+        112,
+        96,
+        2
+      ]
+    },
+    {
+      "name": "GameStarted",
+      "discriminator": [
+        222,
+        247,
+        78,
+        255,
+        61,
+        184,
+        156,
+        41
+      ]
+    },
+    {
+      "name": "PlayerJoined",
+      "discriminator": [
+        39,
+        144,
+        49,
+        106,
+        108,
+        210,
+        183,
+        38
+      ]
+    },
+    {
+      "name": "RefundClaimed",
+      "discriminator": [
+        136,
+        64,
+        242,
+        99,
+        4,
+        244,
+        208,
+        130
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidGameName",
+      "msg": "Invalid game name (must be 1-32 characters)"
+    },
+    {
+      "code": 6001,
+      "name": "EntryFeeTooLow",
+      "msg": "Entry fee must be at least 0.1 SOL"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidPlayerCount",
+      "msg": "Invalid player count (must be 3-100)"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidStartTime",
+      "msg": "Start time must be in the future"
+    },
+    {
+      "code": 6004,
+      "name": "GameNotOpen",
+      "msg": "Game is not open for players"
+    },
+    {
+      "code": 6005,
+      "name": "GameFull",
+      "msg": "Game is full"
+    },
+    {
+      "code": 6006,
+      "name": "AlreadyInGame",
+      "msg": "Player already in this game"
+    },
+    {
+      "code": 6007,
+      "name": "GameAlreadyStarted",
+      "msg": "Game has already started"
+    },
+    {
+      "code": 6008,
+      "name": "CannotStart",
+      "msg": "Cannot start game in current state"
+    },
+    {
+      "code": 6009,
+      "name": "TooEarlyToStart",
+      "msg": "Too early to start the game"
+    },
+    {
+      "code": 6010,
+      "name": "NotEnoughPlayers",
+      "msg": "Not enough players to start (minimum 3)"
+    },
+    {
+      "code": 6011,
+      "name": "OnlyCreatorCanStart",
+      "msg": "Only the creator can start the game"
+    },
+    {
+      "code": 6012,
+      "name": "GameExpired",
+      "msg": "Game has expired"
+    },
+    {
+      "code": 6013,
+      "name": "GameNotExpired",
+      "msg": "Game is not expired"
+    },
+    {
+      "code": 6014,
+      "name": "NotInGame",
+      "msg": "Player not in this game"
+    },
+    {
+      "code": 6015,
+      "name": "AlreadyRefunded",
+      "msg": "Refund already claimed"
+    },
+    {
+      "code": 6016,
+      "name": "OnlyCreatorCanCancel",
+      "msg": "Only creator can cancel"
+    },
+    {
+      "code": 6017,
+      "name": "TooEarlyToCancel",
+      "msg": "Too early to cancel"
+    },
+    {
+      "code": 6018,
+      "name": "CannotCancelWithEnoughPlayers",
+      "msg": "Cannot cancel with enough players"
+    },
+    {
+      "code": 6019,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds in game account"
+    },
+    {
+      "code": 6020,
+      "name": "GameNotFinished",
+      "msg": "Game not finished"
+    },
+    {
+      "code": 6021,
+      "name": "RefundsNotComplete",
+      "msg": "Refunds not complete"
+    },
+    {
+      "code": 6022,
+      "name": "FundsStillInAccount",
+      "msg": "Funds still in account"
+    }
+  ],
+  "types": [
+    {
+      "name": "Game",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "entry_fee",
+            "type": "u64"
+          },
+          {
+            "name": "max_players",
+            "type": "u8"
+          },
+          {
+            "name": "current_players",
+            "type": "u8"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "expire_time",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "GameStatus"
+              }
+            }
+          },
+          {
+            "name": "prize_pool",
+            "type": "u64"
+          },
+          {
+            "name": "players",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "started_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "ended_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "winner",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "game_started",
+            "type": "bool"
+          },
+          {
+            "name": "refunded_players",
+            "type": {
+              "vec": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "reason",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "entry_fee",
+            "type": "u64"
+          },
+          {
+            "name": "max_players",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameRegistry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "game_count",
+            "type": "u64"
+          },
+          {
+            "name": "total_volume",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "players_count",
+            "type": "u8"
+          },
+          {
+            "name": "prize_pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "WaitingForPlayers"
+          },
+          {
+            "name": "ReadyToStart"
+          },
+          {
+            "name": "InProgress"
+          },
+          {
+            "name": "Completed"
+          },
+          {
+            "name": "Cancelled"
+          },
+          {
+            "name": "Expired"
+          },
+          {
+            "name": "ExpiredWithPenalty"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerJoined",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "current_players",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}
