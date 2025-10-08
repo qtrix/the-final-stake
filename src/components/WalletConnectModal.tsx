@@ -34,14 +34,14 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent 
+      <DialogContent
         className="max-w-md p-0 overflow-hidden border-0"
         style={{
           background: 'linear-gradient(135deg, hsl(280, 100%, 5%), hsl(15, 100%, 5%))',
           boxShadow: '0 25px 50px -12px hsla(280, 100%, 35%, 0.5)'
         }}
       >
-        <div 
+        <div
           className="absolute inset-0 opacity-30"
           style={{
             background: 'linear-gradient(135deg, hsla(280, 100%, 35%, 0.1), hsla(15, 100%, 50%, 0.05))',
@@ -49,14 +49,14 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
         />
         <div className="relative">
           <DialogHeader className="p-6 pb-2">
-            <DialogTitle 
+            <DialogTitle
               className="text-2xl font-bold text-center flex items-center justify-center gap-2"
               style={{ color: 'hsl(0, 0%, 90%)' }}
             >
               <Wallet className="w-6 h-6" style={{ color: 'hsl(280, 100%, 35%)' }} />
               Connect Wallet
             </DialogTitle>
-            <p 
+            <p
               className="text-center text-sm mt-2"
               style={{ color: 'hsl(0, 0%, 70%)' }}
             >
@@ -68,7 +68,7 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
             <div className="space-y-3">
               {wallets.map((wallet) => {
                 const isConnecting = selectedWallet === wallet.adapter.name;
-                
+
                 return (
                   <div
                     key={wallet.adapter.name}
@@ -98,13 +98,13 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
                           )}
                         </div>
                         <div>
-                          <div 
+                          <div
                             className="font-semibold text-sm"
                             style={{ color: 'hsl(0, 0%, 90%)' }}
                           >
                             {wallet.adapter.name}
                           </div>
-                          <div 
+                          <div
                             className="text-xs"
                             style={{ color: 'hsl(0, 0%, 70%)' }}
                           >
@@ -115,11 +115,11 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
                       <div className="flex items-center gap-2">
                         {wallet.readyState !== 'Installed' ? (
                           <div className="flex items-center gap-1">
-                            <ExternalLink 
-                              className="w-4 h-4" 
+                            <ExternalLink
+                              className="w-4 h-4"
                               style={{ color: 'hsl(15, 100%, 50%)' }}
                             />
-                            <span 
+                            <span
                               className="text-xs font-medium"
                               style={{ color: 'hsl(15, 100%, 50%)' }}
                             >
@@ -127,11 +127,11 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
                             </span>
                           </div>
                         ) : isConnecting ? (
-                          <div className="animate-spin w-4 h-4 rounded-full border-2 border-t-transparent" 
-                               style={{ borderColor: 'hsl(280, 100%, 35%)' }} />
+                          <div className="animate-spin w-4 h-4 rounded-full border-2 border-t-transparent"
+                            style={{ borderColor: 'hsl(280, 100%, 35%)' }} />
                         ) : (
-                          <ChevronRight 
-                            className="w-4 h-4 transition-transform group-hover:translate-x-1" 
+                          <ChevronRight
+                            className="w-4 h-4 transition-transform group-hover:translate-x-1"
                             style={{ color: 'hsl(280, 100%, 35%)' }}
                           />
                         )}
@@ -142,14 +142,14 @@ export default function WalletConnectModal({ children }: WalletConnectModalProps
               })}
             </div>
 
-            <div 
+            <div
               className="mt-6 p-4 rounded-xl text-center"
               style={{
                 background: 'linear-gradient(135deg, hsla(280, 100%, 35%, 0.2), hsla(15, 100%, 50%, 0.1))',
                 border: '1px solid hsla(15, 100%, 50%, 0.5)'
               }}
             >
-              <p 
+              <p
                 className="text-sm mb-2"
                 style={{ color: 'hsl(0, 0%, 90%)' }}
               >

@@ -70,7 +70,7 @@ export default function Profile() {
     <div className="min-h-screen relative">
       <ParticleBackground />
       <Navbar />
-      
+
       <main className="relative z-10 pt-24 pb-16">
         <div className="container mx-auto px-4 max-w-7xl">
           <Button
@@ -88,7 +88,7 @@ export default function Profile() {
               <Card className="text-center relative overflow-hidden">
                 {/* Animated Background */}
                 <div className="absolute inset-0 bg-gradient-sol opacity-5 animate-pulse-glow" />
-                
+
                 <div className="relative z-10">
                   {/* Avatar with Glow Effect */}
                   <div className="relative w-32 h-32 mx-auto mb-4">
@@ -97,9 +97,9 @@ export default function Profile() {
                       {address.slice(0, 2).toUpperCase()}
                     </div>
                   </div>
-                  
+
                   <h1 className="text-2xl font-bold mb-2 gradient-text">{shortAddress}</h1>
-                  
+
                   <button
                     onClick={handleCopy}
                     className="flex items-center justify-center gap-2 mx-auto text-sm text-muted-foreground hover:text-secondary transition-colors mb-6"
@@ -123,14 +123,14 @@ export default function Profile() {
                       <span className="text-sm text-muted-foreground">Level</span>
                       <span className="text-2xl font-black gradient-text">{level}</span>
                     </div>
-                    
+
                     <div>
                       <div className="flex justify-between text-xs text-muted-foreground mb-2">
                         <span>{xp} / {maxXp} XP</span>
                         <span>{xpPercentage.toFixed(0)}%</span>
                       </div>
                       <div className="h-4 bg-background rounded-full overflow-hidden border border-border/50">
-                        <div 
+                        <div
                           className="h-full bg-gradient-sol transition-all duration-500 relative overflow-hidden"
                           style={{ width: `${xpPercentage}%` }}
                         >
@@ -155,15 +155,15 @@ export default function Profile() {
               <Card>
                 <h3 className="text-lg font-bold mb-4 gradient-text">Quick Actions</h3>
                 <div className="space-y-3">
-                  <Button 
-                    variant="sol" 
+                  <Button
+                    variant="sol"
                     onClick={() => navigate('/lobby')}
                     className="w-full rounded-full"
                   >
                     Join Battle Lobby
                   </Button>
-                  <Button 
-                    variant="sol-outline" 
+                  <Button
+                    variant="sol-outline"
                     onClick={() => navigate('/roadmap')}
                     className="w-full rounded-full"
                   >
@@ -178,7 +178,7 @@ export default function Profile() {
               {/* Battle Statistics */}
               <div>
                 <h2 className="text-3xl font-black mb-6 gradient-text">Battle Statistics</h2>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {stats.map((stat, index) => (
                     <Card key={index} className="group hover:scale-105 transition-transform duration-300">
@@ -201,16 +201,15 @@ export default function Profile() {
                 <h3 className="text-2xl font-bold mb-6 gradient-text">Recent Games</h3>
                 <div className="space-y-3">
                   {recentGames.map((game, index) => (
-                    <div 
+                    <div
                       key={index}
                       className="flex items-center justify-between p-4 rounded-lg bg-background/50 hover:bg-background/80 transition-colors border border-border/30"
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg ${
-                          game.position === 1 ? 'bg-sol-orange text-white' :
-                          game.position <= 3 ? 'bg-sol-purple text-white' :
-                          'bg-muted text-muted-foreground'
-                        }`}>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg ${game.position === 1 ? 'bg-sol-orange text-white' :
+                            game.position <= 3 ? 'bg-sol-purple text-white' :
+                              'bg-muted text-muted-foreground'
+                          }`}>
                           #{game.position}
                         </div>
                         <div>
@@ -234,16 +233,14 @@ export default function Profile() {
                   {achievements.map((achievement, index) => (
                     <div
                       key={index}
-                      className={`p-4 rounded-lg border ${
-                        achievement.unlocked 
-                          ? 'bg-gradient-sol/10 border-sol-orange/50' 
+                      className={`p-4 rounded-lg border ${achievement.unlocked
+                          ? 'bg-gradient-sol/10 border-sol-orange/50'
                           : 'bg-background/30 border-border/30 opacity-50'
-                      } transition-all duration-300 hover:scale-105`}
+                        } transition-all duration-300 hover:scale-105`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`w-12 h-12 rounded-lg ${
-                          achievement.unlocked ? 'bg-gradient-sol' : 'bg-muted'
-                        } flex items-center justify-center flex-shrink-0`}>
+                        <div className={`w-12 h-12 rounded-lg ${achievement.unlocked ? 'bg-gradient-sol' : 'bg-muted'
+                          } flex items-center justify-center flex-shrink-0`}>
                           <achievement.icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1 min-w-0">

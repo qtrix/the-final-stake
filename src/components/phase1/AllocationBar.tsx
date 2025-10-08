@@ -17,7 +17,7 @@ interface AllocationBarProps {
 
 export default function AllocationBar({ pools, totalBalance }: AllocationBarProps) {
     const totalAllocated = pools.reduce((sum, pool) => sum + pool.amount, 0);
-    const allocatedPercentage = (totalAllocated / totalBalance) * 100;
+    const allocatedPercentage = totalBalance > 0 ? (totalAllocated / totalBalance) * 100 : 0;
 
     return (
         <Card className="p-6 mb-8" style={{

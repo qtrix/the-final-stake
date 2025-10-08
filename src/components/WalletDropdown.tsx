@@ -59,7 +59,7 @@ export default function WalletDropdown() {
                 <span>{xpPercentage.toFixed(0)}%</span>
               </div>
               <div className="h-2 bg-background rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-sol transition-all duration-300"
                   style={{ width: `${xpPercentage}%` }}
                 />

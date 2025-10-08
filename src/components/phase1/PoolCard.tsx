@@ -50,85 +50,73 @@ export default function PoolCard({
     onAllocationChange,
     onQuickAllocation
 }: PoolCardProps) {
-    const allocatedAmount = (entryFee * allocation / 100).toFixed(3);
-
     return (
         <Card
-            className="p-6 hover:scale-[1.01] transition-all duration-300 hover:shadow-2xl"
+            className="p-4 hover:scale-[1.01] transition-all duration-200 border-2"
             style={{
-                background: bgGradient,
                 borderColor: borderColor,
-                borderWidth: '2px'
             }}
         >
             {/* Header */}
-            <div className="flex items-start justify-between mb-4">
-                <div className="flex items-start gap-4 flex-1">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
                     <div
-                        className="p-3 rounded-xl animate-pulse"
-                        style={{
-                            background: color,
-                            boxShadow: `0 0 30px ${color}60`
-                        }}
+                        className="p-2 rounded-lg"
+                        style={{ background: color }}
                     >
-                        <Icon className="w-7 h-7 text-white" />
+                        <Icon className="w-5 h-5 text-white" />
                     </div>
-
-                    <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-2xl font-bold" style={{ color }}>
-                                {emoji} {name}
-                            </h3>
-                            <Badge
-                                variant="outline"
-                                style={{
-                                    borderColor: riskColors[riskLevel],
-                                    color: riskColors[riskLevel]
-                                }}
-                            >
-                                {volatility} Risk
-                            </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3">{description}</p>
+                    <div>
+                        <h3 className="text-lg font-bold" style={{ color }}>
+                            {emoji} {name}
+                        </h3>
+                        <Badge
+                            variant="outline"
+                            className="text-xs"
+                            style={{
+                                borderColor: riskColors[riskLevel],
+                                color: riskColors[riskLevel]
+                            }}
+                        >
+                            {volatility} Risk
+                        </Badge>
                     </div>
                 </div>
 
                 <div className="text-right">
-                    <div className="text-4xl font-black mb-1" style={{ color }}>
+                    <div className="text-3xl font-black" style={{ color }}>
                         {allocation.toFixed(1)}%
                     </div>
-                    <div className="text-sm font-semibold" style={{ color: 'hsl(0, 0%, 70%)' }}>
-                        {allocatedAmount} SOL
+                    <div className="text-xs text-muted-foreground">
+                        {entryFee.toFixed(3)} SOL
                     </div>
                 </div>
             </div>
 
+            <p className="text-xs text-muted-foreground mb-3">{description}</p>
+
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-4 p-3 rounded-lg" style={{
-                background: 'hsla(0, 0%, 0%, 0.3)',
-                border: `1px solid ${borderColor}`
-            }}>
+            <div className="grid grid-cols-3 gap-2 mb-3">
                 <div>
-                    <div className="text-xs text-muted-foreground mb-1">Current APR</div>
-                    <div className="font-bold" style={{ color }}>{currentAPR}</div>
+                    <div className="text-xs text-muted-foreground">APR</div>
+                    <div className="text-sm font-bold" style={{ color }}>{currentAPR}</div>
                 </div>
                 <div>
-                    <div className="text-xs text-muted-foreground mb-1">Hourly Yield</div>
-                    <div className="font-bold" style={{ color }}>{yieldRange}</div>
+                    <div className="text-xs text-muted-foreground">Yield</div>
+                    <div className="text-sm font-bold" style={{ color }}>{yieldRange}</div>
                 </div>
                 <div>
-                    <div className="text-xs text-muted-foreground mb-1">Participants</div>
-                    <div className="font-bold" style={{ color }}>{participants}</div>
+                    <div className="text-xs text-muted-foreground">Players</div>
+                    <div className="text-sm font-bold" style={{ color }}>{participants}</div>
                 </div>
             </div>
 
             {/* Special Condition */}
             {specialCondition && (
                 <div
-                    className="mb-4 p-2 rounded-lg text-sm font-semibold text-center animate-pulse"
+                    className="mb-3 p-2 rounded text-xs font-semibold text-center"
                     style={{
                         background: `${color}20`,
-                        border: `1px solid ${color}40`,
                         color
                     }}
                 >
@@ -137,7 +125,7 @@ export default function PoolCard({
             )}
 
             {/* Slider */}
-            <div className="mb-4">
+            <div className="mb-2">
                 <Slider
                     value={[allocation]}
                     onValueChange={onAllocationChange}
@@ -151,37 +139,37 @@ export default function PoolCard({
             </div>
 
             {/* Quick Allocation Buttons */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1">
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => onQuickAllocation(0)}
-                    className="text-xs"
+                    className="text-xs h-7"
                 >
                     Clear
                 </Button>
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => onQuickAllocation(25)}
-                    className="text-xs"
+                    className="text-xs h-7"
                 >
                     25%
                 </Button>
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => onQuickAllocation(50)}
-                    className="text-xs"
+                    className="text-xs h-7"
                 >
                     50%
                 </Button>
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => onQuickAllocation(100)}
-                    className="text-xs font-bold"
-                    style={{ borderColor: color, color }}
+                    className="text-xs h-7 font-bold"
+                    style={{ color }}
                 >
                     MAX
                 </Button>

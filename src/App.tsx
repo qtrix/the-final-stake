@@ -7,10 +7,14 @@ import Index from "./pages/Index";
 import Lobby from "./pages/Lobby";
 import Roadmap from "./pages/Roadmap";
 import Phase1 from "./pages/Phase1";
+import Phase2 from "./pages/Phase2";
 import Tokenomics from "./pages/Tokenomics";
 import Profile from "./pages/Profile";
-
 import NotFound from "./pages/NotFound";
+import CryptoTrivia from "./pages/games/CryptoTrivia";
+import RockPaperScissors from "./pages/games/RockPaperScissors";
+import SpeedTrading from "./pages/games/SpeedTrading";
+import MemeBattles from "./pages/games/MemeBattles";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +29,11 @@ const App = () => (
           <Route path="/lobby" element={<Lobby />} />
           <Route path="/roadmap" element={<Roadmap />} />
           <Route path="/phase1" element={<Phase1 />} />
+          <Route path="/phase2" element={<Phase2 />} />
+          <Route path="/games/crypto-trivia" element={<CryptoTrivia />} />
+          <Route path="/games/rock-paper-scissors" element={<RockPaperScissors />} />
+          <Route path="/games/speed-trading" element={<SpeedTrading />} />
+          <Route path="/games/meme-battles" element={<MemeBattles />} />
           <Route path="/tokenomics" element={<Tokenomics />} />
           <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

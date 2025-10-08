@@ -20,7 +20,7 @@ export default function WalletDisplay() {
 
   return (
     <div className="flex items-center gap-3">
-      <div 
+      <div
         className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer transition-all duration-300"
         style={{
           background: 'linear-gradient(135deg, hsla(280, 100%, 35%, 0.1), hsla(15, 100%, 50%, 0.05))',

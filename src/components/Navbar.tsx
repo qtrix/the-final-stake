@@ -70,6 +70,12 @@ export default function NavbarNew() {
             >
               Gameplay
             </button>
+            <button
+              onClick={() => navigate('/roadmap')}
+              className="text-foreground hover:text-secondary transition-colors"
+            >
+              Roadmap
+            </button>
 
             <Button
               variant="sol"
@@ -116,6 +122,12 @@ export default function NavbarNew() {
               className="block w-full text-left text-foreground hover:text-secondary transition-colors py-2"
             >
               Gameplay
+            </button>
+            <button
+              onClick={() => navigate('/roadmap')}
+              className="block w-full text-left text-foreground hover:text-secondary transition-colors py-2"
+            >
+              Roadmap
             </button>
 
             <Button
