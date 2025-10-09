@@ -1,5 +1,5 @@
 {
-  "address": "Gh957egvYAK46uSATs84Fc8eLCqA37V74F3LHWTGwQBL",
+  "address": "AU3td9Pd4mU5XTn8fQUwKjZZhMsizEpQNjtbMBbfvJvi",
   "metadata": {
     "name": "solana_survivor",
     "version": "0.1.0",
@@ -9,9 +9,6 @@
   "instructions": [
     {
       "name": "advance_phase",
-      "docs": [
-        "Advance phase"
-      ],
       "discriminator": [
         91,
         6,
@@ -36,9 +33,6 @@
     },
     {
       "name": "claim_mini_game_win",
-      "docs": [
-        "Claim mini game win"
-      ],
       "discriminator": [
         153,
         162,
@@ -79,9 +73,6 @@
     },
     {
       "name": "claim_phase_end_rewards",
-      "docs": [
-        "Claim phase end rewards"
-      ],
       "discriminator": [
         103,
         81,
@@ -112,9 +103,6 @@
     },
     {
       "name": "claim_refund",
-      "docs": [
-        "Claim refund"
-      ],
       "discriminator": [
         15,
         16,
@@ -140,9 +128,6 @@
     },
     {
       "name": "claim_rewards",
-      "docs": [
-        "Claim rewards"
-      ],
       "discriminator": [
         4,
         144,
@@ -173,9 +158,6 @@
     },
     {
       "name": "create_challenge",
-      "docs": [
-        "Create challenge (Phase 2)"
-      ],
       "discriminator": [
         170,
         244,
@@ -217,7 +199,7 @@
               },
               {
                 "kind": "arg",
-                "path": "opponent"
+                "path": "opponent_key"
               },
               {
                 "kind": "arg",
@@ -230,13 +212,15 @@
           "name": "game"
         },
         {
-          "name": "player_state",
-          "writable": true
+          "name": "player_state"
         },
         {
           "name": "challenger",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "opponent"
         },
         {
           "name": "system_program",
@@ -268,9 +252,6 @@
     },
     {
       "name": "create_game",
-      "docs": [
-        "Create game"
-      ],
       "discriminator": [
         124,
         69,
@@ -306,7 +287,29 @@
         },
         {
           "name": "game_registry",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "creator",
@@ -320,7 +323,7 @@
       ],
       "args": [
         {
-          "name": "game_name",
+          "name": "name",
           "type": "string"
         },
         {
@@ -343,9 +346,6 @@
     },
     {
       "name": "creator_cancel_game",
-      "docs": [
-        "Creator cancel game"
-      ],
       "discriminator": [
         217,
         224,
@@ -370,9 +370,6 @@
     },
     {
       "name": "enter_game",
-      "docs": [
-        "Enter game"
-      ],
       "discriminator": [
         157,
         184,
@@ -401,37 +398,7 @@
       "args": []
     },
     {
-      "name": "expire_challenge",
-      "docs": [
-        "Expire challenge"
-      ],
-      "discriminator": [
-        73,
-        82,
-        20,
-        227,
-        216,
-        66,
-        58,
-        41
-      ],
-      "accounts": [
-        {
-          "name": "challenge",
-          "writable": true
-        },
-        {
-          "name": "challenger_state",
-          "writable": true
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "initialize",
-      "docs": [
-        "Initialize registry"
-      ],
       "discriminator": [
         175,
         175,
@@ -483,9 +450,6 @@
     },
     {
       "name": "initialize_player_state",
-      "docs": [
-        "Initialize player state"
-      ],
       "discriminator": [
         184,
         61,
@@ -548,9 +512,6 @@
     },
     {
       "name": "initialize_pool_state",
-      "docs": [
-        "Initialize pool state"
-      ],
       "discriminator": [
         195,
         164,
@@ -607,9 +568,6 @@
     },
     {
       "name": "ready_for_game",
-      "docs": [
-        "Mark ready for game"
-      ],
       "discriminator": [
         156,
         201,
@@ -634,9 +592,6 @@
     },
     {
       "name": "respond_challenge",
-      "docs": [
-        "Respond to challenge"
-      ],
       "discriminator": [
         23,
         91,
@@ -656,8 +611,7 @@
           "name": "game"
         },
         {
-          "name": "opponent_state",
-          "writable": true
+          "name": "opponent_state"
         },
         {
           "name": "opponent",
@@ -673,9 +627,6 @@
     },
     {
       "name": "start_game",
-      "docs": [
-        "Start game and emit initialization data"
-      ],
       "discriminator": [
         249,
         47,
@@ -700,9 +651,6 @@
     },
     {
       "name": "start_mini_game",
-      "docs": [
-        "Start mini game"
-      ],
       "discriminator": [
         52,
         249,
@@ -727,9 +675,6 @@
     },
     {
       "name": "submit_allocations",
-      "docs": [
-        "Submit allocations"
-      ],
       "discriminator": [
         167,
         209,
@@ -850,32 +795,6 @@
   ],
   "events": [
     {
-      "name": "AllocationsSubmitted",
-      "discriminator": [
-        146,
-        134,
-        199,
-        74,
-        60,
-        60,
-        206,
-        107
-      ]
-    },
-    {
-      "name": "ChallengeAccepted",
-      "discriminator": [
-        124,
-        138,
-        232,
-        12,
-        193,
-        248,
-        3,
-        41
-      ]
-    },
-    {
       "name": "ChallengeCreated",
       "discriminator": [
         166,
@@ -886,58 +805,6 @@
         172,
         98,
         243
-      ]
-    },
-    {
-      "name": "ChallengeDeclined",
-      "discriminator": [
-        131,
-        36,
-        204,
-        157,
-        182,
-        208,
-        59,
-        24
-      ]
-    },
-    {
-      "name": "ChallengeExpired",
-      "discriminator": [
-        8,
-        175,
-        9,
-        64,
-        0,
-        48,
-        124,
-        120
-      ]
-    },
-    {
-      "name": "ChallengeForcedAccept",
-      "discriminator": [
-        155,
-        24,
-        240,
-        64,
-        69,
-        32,
-        206,
-        242
-      ]
-    },
-    {
-      "name": "ChallengeReady",
-      "discriminator": [
-        143,
-        44,
-        199,
-        195,
-        137,
-        169,
-        19,
-        221
       ]
     },
     {
@@ -980,29 +847,16 @@
       ]
     },
     {
-      "name": "MiniGameStarted",
+      "name": "Phase2PenaltyApplied",
       "discriminator": [
-        56,
-        134,
-        158,
-        113,
-        182,
-        198,
+        67,
+        12,
+        246,
+        5,
+        161,
+        196,
         218,
-        108
-      ]
-    },
-    {
-      "name": "MiniGameTimedOut",
-      "discriminator": [
-        219,
-        128,
-        112,
-        32,
-        189,
-        19,
-        185,
-        41
+        48
       ]
     },
     {
@@ -1019,32 +873,6 @@
       ]
     },
     {
-      "name": "PhaseEndRewardsClaimed",
-      "discriminator": [
-        252,
-        213,
-        125,
-        218,
-        253,
-        2,
-        193,
-        167
-      ]
-    },
-    {
-      "name": "PhaseEvent",
-      "discriminator": [
-        104,
-        3,
-        158,
-        157,
-        168,
-        23,
-        254,
-        151
-      ]
-    },
-    {
       "name": "PlayerJoined",
       "discriminator": [
         39,
@@ -1056,26 +884,13 @@
         183,
         38
       ]
-    },
-    {
-      "name": "RewardsClaimed",
-      "discriminator": [
-        75,
-        98,
-        88,
-        18,
-        219,
-        112,
-        88,
-        121
-      ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidGameName",
-      "msg": "Invalid game name"
+      "name": "InvalidMaxPlayers",
+      "msg": "Invalid max players"
     },
     {
       "code": 6001,
@@ -1084,48 +899,48 @@
     },
     {
       "code": 6002,
-      "name": "InvalidMaxPlayers",
-      "msg": "Invalid max players"
+      "name": "InvalidStartTime",
+      "msg": "Invalid start time"
     },
     {
       "code": 6003,
       "name": "InvalidGameDuration",
-      "msg": "Invalid game duration - minimum 1 hour"
+      "msg": "Invalid game duration"
     },
     {
       "code": 6004,
       "name": "GameNotOpen",
-      "msg": "Game is not open for players"
+      "msg": "Game is not open"
     },
     {
       "code": 6005,
+      "name": "GameAlreadyStarted",
+      "msg": "Game already started"
+    },
+    {
+      "code": 6006,
       "name": "GameFull",
       "msg": "Game is full"
     },
     {
-      "code": 6006,
-      "name": "AlreadyInGame",
-      "msg": "Already in this game"
-    },
-    {
       "code": 6007,
-      "name": "GameAlreadyStarted",
-      "msg": "Game has already started"
+      "name": "AlreadyJoined",
+      "msg": "Player already joined"
     },
     {
       "code": 6008,
-      "name": "NotCreator",
-      "msg": "Not the game creator"
+      "name": "GameExpired",
+      "msg": "Game expired"
     },
     {
       "code": 6009,
-      "name": "CannotStartYet",
-      "msg": "Cannot start game yet"
+      "name": "NotCreator",
+      "msg": "Not the creator"
     },
     {
       "code": 6010,
       "name": "NotEnoughPlayers",
-      "msg": "Not enough players to start"
+      "msg": "Not enough players"
     },
     {
       "code": 6011,
@@ -1134,163 +949,86 @@
     },
     {
       "code": 6012,
-      "name": "NotInGame",
-      "msg": "Not in this game"
+      "name": "GameNotCancelled",
+      "msg": "Game not cancelled"
     },
     {
       "code": 6013,
-      "name": "WrongPhase",
-      "msg": "Wrong phase"
+      "name": "NotInGame",
+      "msg": "Player not in game"
     },
     {
       "code": 6014,
-      "name": "PhaseEnded",
-      "msg": "Phase has ended"
-    },
-    {
-      "code": 6015,
-      "name": "InsufficientBalance",
-      "msg": "Insufficient balance"
-    },
-    {
-      "code": 6016,
-      "name": "NoActiveAllocation",
-      "msg": "No active allocation"
-    },
-    {
-      "code": 6017,
-      "name": "NothingToClaim",
-      "msg": "Nothing to claim"
-    },
-    {
-      "code": 6018,
-      "name": "PhaseNotEnded",
-      "msg": "Phase not ended yet"
-    },
-    {
-      "code": 6019,
-      "name": "GameAlreadyEnded",
-      "msg": "Game already ended"
-    },
-    {
-      "code": 6020,
-      "name": "OnlyCreatorCanAdvance",
-      "msg": "Only creator can advance phase (timeout not reached)"
-    },
-    {
-      "code": 6021,
-      "name": "CannotCancelYet",
-      "msg": "Cannot cancel yet"
-    },
-    {
-      "code": 6022,
-      "name": "TooManyPlayers",
-      "msg": "Too many players to cancel"
-    },
-    {
-      "code": 6023,
-      "name": "CannotRefund",
-      "msg": "Cannot refund"
-    },
-    {
-      "code": 6024,
       "name": "AlreadyRefunded",
       "msg": "Already refunded"
     },
     {
-      "code": 6025,
-      "name": "CreatorPenalty",
-      "msg": "Creator penalty - no refund"
+      "code": 6015,
+      "name": "InvalidAllocation",
+      "msg": "Invalid allocation total"
     },
     {
-      "code": 6026,
-      "name": "InsufficientFunds",
-      "msg": "Insufficient funds in game"
+      "code": 6016,
+      "name": "InvalidPhase",
+      "msg": "Invalid phase"
     },
     {
-      "code": 6027,
-      "name": "CannotChallengeYourself",
-      "msg": "Cannot challenge yourself"
+      "code": 6017,
+      "name": "PhaseNotEnded",
+      "msg": "Phase not ended"
     },
     {
-      "code": 6028,
-      "name": "InvalidBetAmount",
-      "msg": "Invalid bet amount"
+      "code": 6018,
+      "name": "NotAuthorizedToAdvance",
+      "msg": "Not authorized to advance"
     },
     {
-      "code": 6029,
+      "code": 6019,
+      "name": "InsufficientBalance",
+      "msg": "Insufficient balance"
+    },
+    {
+      "code": 6020,
+      "name": "OpponentNotInGame",
+      "msg": "Opponent not in game"
+    },
+    {
+      "code": 6021,
+      "name": "CannotChallengeSelf",
+      "msg": "Cannot challenge self"
+    },
+    {
+      "code": 6022,
       "name": "InvalidChallengeStatus",
       "msg": "Invalid challenge status"
     },
     {
-      "code": 6030,
+      "code": 6023,
       "name": "NotChallengeOpponent",
-      "msg": "Not the challenge opponent"
+      "msg": "Not challenge opponent"
     },
     {
-      "code": 6031,
-      "name": "NotInChallenge",
-      "msg": "Not in this challenge"
+      "code": 6024,
+      "name": "NotChallengeParticipant",
+      "msg": "Not challenge participant"
     },
     {
-      "code": 6032,
+      "code": 6025,
       "name": "InvalidWinner",
       "msg": "Invalid winner"
     },
     {
-      "code": 6033,
-      "name": "InvalidWinnerState",
-      "msg": "Invalid winner state"
+      "code": 6026,
+      "name": "MaxGamesPerOpponentReached",
+      "msg": "Maximum games per opponent reached"
     },
     {
-      "code": 6034,
-      "name": "InvalidLoserState",
-      "msg": "Invalid loser state"
-    },
-    {
-      "code": 6035,
-      "name": "ChallengeNotExpired",
-      "msg": "Challenge not expired yet"
-    },
-    {
-      "code": 6036,
-      "name": "InvalidTimestamp",
-      "msg": "Invalid timestamp"
+      "code": 6027,
+      "name": "Phase2RequirementNotMet",
+      "msg": "Phase 2 requirement not met"
     }
   ],
   "types": [
-    {
-      "name": "AllocationsSubmitted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "pending_claimed",
-            "type": "u64"
-          },
-          {
-            "name": "new_allocations",
-            "type": {
-              "defined": {
-                "name": "ResourceAllocations"
-              }
-            }
-          },
-          {
-            "name": "remaining_balance",
-            "type": "u64"
-          }
-        ]
-      }
-    },
     {
       "name": "Challenge",
       "type": {
@@ -1357,26 +1095,6 @@
           {
             "name": "opponent_decline_count",
             "type": "u8"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ChallengeAccepted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "opponent",
-            "type": "pubkey"
           }
         ]
       }
@@ -1405,78 +1123,6 @@
           {
             "name": "bet_amount",
             "type": "u64"
-          },
-          {
-            "name": "game_type",
-            "type": {
-              "defined": {
-                "name": "MiniGameType"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "ChallengeDeclined",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "opponent",
-            "type": "pubkey"
-          },
-          {
-            "name": "decline_count",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ChallengeExpired",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ChallengeForcedAccept",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "opponent",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ChallengeReady",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "player",
-            "type": "pubkey"
           }
         ]
       }
@@ -1540,14 +1186,6 @@
             "type": "u8"
           },
           {
-            "name": "status",
-            "type": {
-              "defined": {
-                "name": "GameStatus"
-              }
-            }
-          },
-          {
             "name": "start_time",
             "type": "i64"
           },
@@ -1556,12 +1194,32 @@
             "type": "i64"
           },
           {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "GameStatus"
+              }
+            }
+          },
+          {
             "name": "prize_pool",
             "type": "u64"
           },
           {
+            "name": "players",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
             "name": "game_started",
             "type": "bool"
+          },
+          {
+            "name": "refunded_players",
+            "type": {
+              "vec": "pubkey"
+            }
           },
           {
             "name": "current_phase",
@@ -1576,24 +1234,20 @@
             "type": "i64"
           },
           {
-            "name": "players",
-            "type": {
-              "vec": "pubkey"
-            }
-          },
-          {
-            "name": "refunded_players",
-            "type": {
-              "vec": "pubkey"
-            }
-          },
-          {
             "name": "phases",
             "type": {
               "defined": {
-                "name": "GamePhases"
+                "name": "PhaseDurations"
               }
             }
+          },
+          {
+            "name": "phase2_required_games",
+            "type": "u8"
+          },
+          {
+            "name": "phase2_max_games_per_opponent",
+            "type": "u8"
           }
         ]
       }
@@ -1606,10 +1260,6 @@
           {
             "name": "game_id",
             "type": "u64"
-          },
-          {
-            "name": "name",
-            "type": "string"
           },
           {
             "name": "creator",
@@ -1628,36 +1278,12 @@
             "type": "i64"
           },
           {
-            "name": "phase_1_duration",
-            "type": "i64"
+            "name": "phase2_required_games",
+            "type": "u8"
           },
           {
-            "name": "phase_2_duration",
-            "type": "i64"
-          },
-          {
-            "name": "phase_3_duration",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GamePhases",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "phase_1_duration",
-            "type": "i64"
-          },
-          {
-            "name": "phase_2_duration",
-            "type": "i64"
-          },
-          {
-            "name": "phase_3_duration",
-            "type": "i64"
+            "name": "phase2_max_games_per_opponent",
+            "type": "u8"
           }
         ]
       }
@@ -1693,7 +1319,7 @@
           },
           {
             "name": "social_pool_participants",
-            "type": "u8"
+            "type": "u32"
           },
           {
             "name": "farming_season",
@@ -1702,6 +1328,10 @@
           {
             "name": "trading_market_state",
             "type": "u8"
+          },
+          {
+            "name": "last_event_time",
+            "type": "i64"
           }
         ]
       }
@@ -1716,8 +1346,8 @@
             "type": "u64"
           },
           {
-            "name": "authority",
-            "type": "pubkey"
+            "name": "total_games_created",
+            "type": "u64"
           }
         ]
       }
@@ -1732,22 +1362,12 @@
             "type": "u64"
           },
           {
-            "name": "started_at",
+            "name": "start_time",
             "type": "i64"
           },
           {
-            "name": "phase_1_ends_at",
+            "name": "phase1_end_time",
             "type": "i64"
-          },
-          {
-            "name": "players",
-            "type": {
-              "vec": "pubkey"
-            }
-          },
-          {
-            "name": "virtual_balance_per_player",
-            "type": "u64"
           }
         ]
       }
@@ -1767,6 +1387,9 @@
             "name": "InProgress"
           },
           {
+            "name": "Completed"
+          },
+          {
             "name": "Cancelled"
           },
           {
@@ -1774,9 +1397,6 @@
           },
           {
             "name": "ExpiredWithPenalty"
-          },
-          {
-            "name": "Completed"
           }
         ]
       }
@@ -1799,40 +1419,8 @@
             "type": "pubkey"
           },
           {
-            "name": "winnings",
+            "name": "bet_amount",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MiniGameStarted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "started_at",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MiniGameTimedOut",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "challenge_id",
-            "type": "u64"
-          },
-          {
-            "name": "winner",
-            "type": "pubkey"
           }
         ]
       }
@@ -1858,6 +1446,46 @@
       }
     },
     {
+      "name": "OpponentRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "games_count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase2PenaltyApplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "games_played",
+            "type": "u8"
+          },
+          {
+            "name": "required_games",
+            "type": "u8"
+          },
+          {
+            "name": "penalty_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "PhaseAdvanced",
       "type": {
         "kind": "struct",
@@ -1871,10 +1499,6 @@
             "type": "u8"
           },
           {
-            "name": "advanced_by",
-            "type": "pubkey"
-          },
-          {
             "name": "phase_end_time",
             "type": "i64"
           }
@@ -1882,57 +1506,21 @@
       }
     },
     {
-      "name": "PhaseEndRewardsClaimed",
+      "name": "PhaseDurations",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "game_id",
+            "name": "phase1_duration",
             "type": "u64"
           },
           {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "final_rewards",
+            "name": "phase2_duration",
             "type": "u64"
           },
           {
-            "name": "final_balance",
+            "name": "phase3_duration",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PhaseEvent",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
-            "name": "event_type",
-            "type": "string"
-          },
-          {
-            "name": "event_time",
-            "type": "i64"
-          },
-          {
-            "name": "season",
-            "type": {
-              "option": "u8"
-            }
-          },
-          {
-            "name": "market_state",
-            "type": {
-              "option": "u8"
-            }
           }
         ]
       }
@@ -1943,12 +1531,12 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
             "name": "player",
             "type": "pubkey"
+          },
+          {
+            "name": "game_id",
+            "type": "u64"
           },
           {
             "name": "virtual_balance",
@@ -1973,6 +1561,32 @@
                 "name": "ResourceAllocations"
               }
             }
+          },
+          {
+            "name": "phase2_games_played",
+            "type": "u8"
+          },
+          {
+            "name": "phase2_games_won",
+            "type": "u8"
+          },
+          {
+            "name": "phase2_opponents_played",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "OpponentRecord"
+                }
+              }
+            }
+          },
+          {
+            "name": "phase2_requirement_met",
+            "type": "bool"
+          },
+          {
+            "name": "phase2_penalty_applied",
+            "type": "bool"
           }
         ]
       }
@@ -2020,30 +1634,6 @@
           },
           {
             "name": "social",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "RewardsClaimed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
-          },
-          {
-            "name": "new_balance",
             "type": "u64"
           }
         ]

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, Clock, Trophy, TrendingUp, Play, UserPlus, Eye, Crown, Zap, Calendar, Timer, Plus, RefreshCw, AlertCircle, XCircle, Search, Filter, ArrowUpDown } from 'lucide-react';
 import ParticleBackground from "../components/ParticleBackground";
@@ -175,6 +175,9 @@ export default function Lobby() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'entryFee' | 'players' | 'startTime' | 'prizePool'>('startTime');
 
+  const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Filter and sort games
   const filteredAndSortedGames = solanaGame.games
     .filter(game => {
@@ -242,6 +245,71 @@ export default function Lobby() {
     const interval = setInterval(fetchSolPrice, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    // Funcție pentru auto-refresh
+    const performAutoRefresh = async () => {
+      console.log('🔄 Auto-refresh triggered at', new Date().toLocaleTimeString());
+
+      try {
+        // Apelează funcția de refresh existentă
+        await solanaGame.fetchGames();
+
+        // Actualizează timestamp-ul ultimului refresh
+        setLastAutoRefresh(new Date());
+
+        console.log('✅ Auto-refresh completed successfully');
+      } catch (error) {
+        console.error('❌ Auto-refresh failed:', error);
+        // Nu afișăm toast pentru a nu deranja utilizatorul cu mesaje automate
+      }
+    };
+
+    // Setează intervalul de 40 secunde
+    autoRefreshIntervalRef.current = setInterval(performAutoRefresh, 40000);
+
+    // Cleanup function - FOARTE IMPORTANT pentru a preveni memory leaks
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        console.log('🧹 Cleaning up auto-refresh interval');
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [solanaGame.fetchGames]); // Dependency pe fetchGames
+
+  // OPȚIONAL: Adaugă și un useEffect pentru a opri auto-refresh când utilizatorul nu e pe pagină
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Utilizatorul a schimbat tab-ul - oprește auto-refresh
+        if (autoRefreshIntervalRef.current) {
+          console.log('⏸️ Pausing auto-refresh (tab hidden)');
+          clearInterval(autoRefreshIntervalRef.current);
+          autoRefreshIntervalRef.current = null;
+        }
+      } else {
+        // Utilizatorul s-a întors pe tab - reporește auto-refresh
+        console.log('▶️ Resuming auto-refresh (tab visible)');
+
+        // Reporește intervalul
+        autoRefreshIntervalRef.current = setInterval(async () => {
+          try {
+            await solanaGame.fetchGames();
+            setLastAutoRefresh(new Date());
+          } catch (error) {
+            console.error('❌ Auto-refresh failed:', error);
+          }
+        }, 40000);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [solanaGame.fetchGames]);
 
   // Statistici calculate din jocurile reale
   const stats = {

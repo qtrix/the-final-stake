@@ -1,3 +1,4 @@
+// src/pages/Phase2.tsx - VERSIUNE COMPLETĂ CU TOT DESIGN-UL ORIGINAL
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -5,12 +6,25 @@ import { PublicKey } from '@solana/web3.js';
 import { useSolanaGame, type Challenge, type MiniGameType } from '@/hooks/useSolanaGame';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import ParticleBackground from '@/components/ParticleBackground';
 import Navbar from '@/components/Navbar';
 import CountdownTimer from '@/components/CountdownTimer';
 import GameModal from '@/components/phase2/GameModal';
-import { Swords, Users, Trophy, Coins, ArrowLeft, Loader2, Wifi, WifiOff, Clock, Zap } from 'lucide-react';
+import {
+    Swords, Users, Trophy, Coins, ArrowLeft, Loader2, Clock, Zap,
+    AlertTriangle, Target, TrendingUp
+} from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    calculateGameRequirements,
+    checkPlayerEligibility,
+    canChallengeOpponent,
+    getPenaltyDescription,
+    getProgressStatus,
+    calculateOptimalGameDistribution,
+    type PlayerGameStats
+} from '@/lib/gameFormulas';
 
 export default function Phase2() {
     const navigate = useNavigate();
@@ -30,9 +44,14 @@ export default function Phase2() {
     const [showGameModal, setShowGameModal] = useState(false);
     const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
 
-    // Rate limiting
+    const [gameRequirements, setGameRequirements] = useState<any>(null);
+    const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
+    const [eligibilityStatus, setEligibilityStatus] = useState<any>(null);
+    const [progressStatus, setProgressStatus] = useState<any>(null);
+    const [optimalDistribution, setOptimalDistribution] = useState<any>(null);
+
     const lastFetchTimeRef = useRef<number>(0);
-    const FETCH_INTERVAL = 20000; // 10 seconds
+    const FETCH_INTERVAL = 20000;
 
     const gameTypes: { id: MiniGameType; name: string; icon: string; description: string }[] = [
         { id: 'CryptoTrivia', name: 'Crypto Trivia', icon: '🧠', description: '10 questions, 10s each' },
@@ -41,7 +60,6 @@ export default function Phase2() {
         { id: 'MemeBattle', name: 'Meme Battle', icon: '🎭', description: 'Best of 3 meme showdown' },
     ];
 
-    // Helper function for case-insensitive status check
     const checkStatus = (challenge: Challenge, statusToCheck: string): boolean => {
         return challenge.status.toLowerCase() === statusToCheck.toLowerCase();
     };
@@ -53,46 +71,95 @@ export default function Phase2() {
         }
 
         const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('gameId');
+        const gameIdParam = urlParams.get('gameId');
 
-        console.log('🔍 [Phase2] Looking for game:', gameId, 'in games:', solanaGame.games);
+        if (!gameIdParam) {
+            toast.error('Game ID missing from URL');
+            return;
+        }
 
-        if (gameId && solanaGame.games) {
-            const game = solanaGame.games.find(g => g.gameId === parseInt(gameId));
-            console.log('🔍 [Phase2] Found game:', game);
-            if (game) {
-                setCurrentGame(game);
-            }
+        if (!solanaGame.games || solanaGame.games.length === 0) return;
+
+        const gameId = parseInt(gameIdParam);
+        const game = solanaGame.games.find(g => g.gameId === gameId);
+
+        if (game) {
+            console.log('✅ Game found:', game.gameId);
+            setCurrentGame(game);
+        } else {
+            toast.error(`Game ${gameId} not found`);
         }
     }, [wallet.publicKey, solanaGame.games, navigate]);
 
     useEffect(() => {
+        if (!currentGame) return;
+
+        const requirements = calculateGameRequirements(
+            currentGame.phase2RequiredGames || 5,
+            currentGame.phase2MaxGamesPerOpponent || 3
+        );
+        setGameRequirements(requirements);
+
+        const distribution = calculateOptimalGameDistribution(
+            currentGame.players.length,
+            requirements.requiredGames,
+            requirements.maxGamesPerOpponent
+        );
+        setOptimalDistribution(distribution);
+    }, [currentGame]);
+
+    useEffect(() => {
+        const fetchPlayerStats = async () => {
+            if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
+            if (!wallet.publicKey || !gameRequirements) return;
+
+            const stats = await solanaGame.getPlayerPhase2Stats(
+                currentGame.gameId,
+                wallet.publicKey
+            );
+
+            const playerGameStats: PlayerGameStats = {
+                totalGamesPlayed: stats.totalGamesPlayed,
+                gamesWon: stats.gamesWon,
+                gamesLost: stats.gamesLost,
+                opponentPlayCounts: new Map(Object.entries(stats.opponentPlayCounts)),
+                completedRequirement: false,
+                participationRate: 0
+            };
+
+            if (gameRequirements) {
+                const eligibility = checkPlayerEligibility(playerGameStats, gameRequirements);
+                playerGameStats.completedRequirement = eligibility.eligible;
+                playerGameStats.participationRate =
+                    (stats.totalGamesPlayed / gameRequirements.requiredGames) * 100;
+                setEligibilityStatus(eligibility);
+
+                const progress = getProgressStatus(
+                    stats.totalGamesPlayed,
+                    gameRequirements.requiredGames
+                );
+                setProgressStatus(progress);
+            }
+
+            setPlayerStats(playerGameStats);
+        };
+
+        fetchPlayerStats();
+        const interval = setInterval(fetchPlayerStats, 15000);
+        return () => clearInterval(interval);
+    }, [currentGame?.gameId, wallet.publicKey, gameRequirements]);
+
+    useEffect(() => {
         const fetchData = async () => {
-            // Rate limiting check
             const now = Date.now();
-            const timeSinceLastFetch = now - lastFetchTimeRef.current;
-
-            if (timeSinceLastFetch < FETCH_INTERVAL) {
-                console.log(`⏰ Rate limit: waiting ${Math.ceil((FETCH_INTERVAL - timeSinceLastFetch) / 1000)}s before next fetch`);
-                return;
-            }
-
-            if (currentGame?.gameId === undefined || !wallet.publicKey || !solanaGame.program) {
-                console.log('🔍 [Phase2] Skipping fetch:', {
-                    hasGame: !!currentGame,
-                    gameId: currentGame?.gameId,
-                    hasWallet: !!wallet.publicKey,
-                    hasProgram: !!solanaGame.program
-                });
-                return;
-            }
+            if (now - lastFetchTimeRef.current < FETCH_INTERVAL) return;
+            if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
+            if (!wallet.publicKey || !solanaGame.program) return;
 
             try {
                 lastFetchTimeRef.current = now;
-                console.log('🔍 [Phase2] Fetching player data for gameId:', currentGame.gameId);
 
                 const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey);
-                console.log('🔍 [Phase2] My player state:', playerData);
                 setPlayerState(playerData);
 
                 const playersData = await Promise.all(
@@ -100,7 +167,6 @@ export default function Phase2() {
                         try {
                             const playerPubkey = new PublicKey(playerAddress);
                             const playerState = await solanaGame.getPlayerState(currentGame.gameId, playerPubkey);
-
                             const virtualBalance = playerState?.virtualBalance ? playerState.virtualBalance / 1e9 : 0;
 
                             return {
@@ -109,7 +175,6 @@ export default function Phase2() {
                                 virtualBalance
                             };
                         } catch (error) {
-                            console.error(`Error fetching player ${playerAddress}:`, error);
                             return {
                                 address: playerAddress,
                                 publicKey: new PublicKey(playerAddress),
@@ -119,19 +184,12 @@ export default function Phase2() {
                     })
                 );
 
-                console.log('🔍 [Phase2] All players data:', playersData);
-
                 const otherPlayers = playersData.filter(p => p.address !== wallet.publicKey.toBase58());
-                console.log('🔍 [Phase2] Other players (filtered):', otherPlayers);
                 setAllPlayers(otherPlayers);
 
                 const pending = await solanaGame.getPendingChallenges(currentGame.gameId);
                 const active = await solanaGame.getActiveChallenges(currentGame.gameId);
                 const mine = await solanaGame.getMyChallenges(currentGame.gameId);
-
-                console.log('🔍 [Phase2] Pending challenges:', pending);
-                console.log('🔍 [Phase2] Active challenges:', active);
-                console.log('🔍 [Phase2] My challenges:', mine);
 
                 setReceivedChallenges(pending);
                 setActiveChallenges(active);
@@ -142,16 +200,40 @@ export default function Phase2() {
         };
 
         fetchData();
-
-        // Set interval to 10 seconds
         const interval = setInterval(fetchData, FETCH_INTERVAL);
         return () => clearInterval(interval);
     }, [currentGame?.gameId, wallet.publicKey, solanaGame.program]);
 
     const sendChallenge = async () => {
+        console.log('🎮 [sendChallenge] Starting:', {
+            selectedPlayer: selectedPlayer?.toBase58(),
+            challengeAmount,
+            selectedGameType,
+            currentGameId: currentGame?.gameId
+        });
+
         if (!selectedPlayer || !challengeAmount || !selectedGameType) {
-            toast.error('Please select a player, amount, and game type');
+            toast.error('Please select player, amount, and game type');
             return;
+        }
+
+        if (currentGame?.gameId !== 0 && !currentGame?.gameId) {
+            console.error('❌ Game not found!');
+            toast.error('Game not found. Refresh the page.');
+            return;
+        }
+
+        if (playerStats && gameRequirements) {
+            const canChallenge = canChallengeOpponent(
+                selectedPlayer.toBase58(),
+                playerStats,
+                gameRequirements
+            );
+
+            if (!canChallenge.canChallenge) {
+                toast.error(canChallenge.reason || 'Cannot challenge this opponent');
+                return;
+            }
         }
 
         const amount = parseFloat(challengeAmount);
@@ -161,13 +243,10 @@ export default function Phase2() {
             return;
         }
 
-        if (!currentGame?.gameId) {
-            toast.error('Game not found');
-            return;
-        }
-
         setLoading(true);
         try {
+            console.log('📤 Creating challenge with gameId:', currentGame.gameId);
+
             await solanaGame.createChallenge(
                 currentGame.gameId,
                 selectedPlayer,
@@ -175,7 +254,7 @@ export default function Phase2() {
                 selectedGameType as MiniGameType
             );
 
-            toast.success('Challenge sent on-chain! 🎮');
+            toast.success('Challenge sent! 🎮');
 
             setSelectedPlayer(null);
             setChallengeAmount('');
@@ -184,7 +263,7 @@ export default function Phase2() {
             const mine = await solanaGame.getMyChallenges(currentGame.gameId);
             setMyChallenges(mine);
         } catch (error: any) {
-            console.error('Error sending challenge:', error);
+            console.error('❌ Error:', error);
             toast.error(error.message || 'Failed to send challenge');
         } finally {
             setLoading(false);
@@ -192,91 +271,36 @@ export default function Phase2() {
     };
 
     const handleChallenge = async (challenge: Challenge, accept: boolean) => {
-        if (!currentGame?.gameId) return;
+        if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
 
         setLoading(true);
         try {
-            console.log('🎯 Responding to challenge:', {
-                challengePDA: challenge.publicKey.toBase58(),
-                accept,
-                gameId: currentGame.gameId
-            });
-
             await solanaGame.respondToChallenge(challenge.publicKey, currentGame.gameId, accept);
 
             if (accept) {
                 toast.success('Challenge accepted! 🎯');
-
-                // Refresh challenges
                 const active = await solanaGame.getActiveChallenges(currentGame.gameId);
                 setActiveChallenges(active);
 
-                const updatedChallenge = active.find(c =>
-                    c.publicKey.equals(challenge.publicKey)
-                );
-
-                if (updatedChallenge) {
-                    console.log('✅ Challenge now in active state:', updatedChallenge.status);
-                    if (checkStatus(updatedChallenge, 'Accepted')) {
-                        await solanaGame.markReady(updatedChallenge.publicKey);
-                        toast.info('Marked as ready. Waiting for opponent...');
-
-                        pollForBothReady(updatedChallenge.publicKey);
-                    }
+                const updatedChallenge = active.find(c => c.publicKey.equals(challenge.publicKey));
+                if (updatedChallenge && checkStatus(updatedChallenge, 'Accepted')) {
+                    await solanaGame.markReady(updatedChallenge.publicKey);
+                    toast.info('Marked as ready');
                 }
             } else {
-                const declineCount = challenge.opponentDeclineCount + 1;
-                if (declineCount >= 5) {
-                    toast.warning('Challenge force-accepted after 5 declines!');
-                } else {
-                    toast.info(`Challenge declined (${declineCount}/5)`);
-                }
+                toast.info(`Challenge declined (${challenge.opponentDeclineCount + 1}/5)`);
             }
 
-            // Refresh all challenge lists
             const pending = await solanaGame.getPendingChallenges(currentGame.gameId);
             const active = await solanaGame.getActiveChallenges(currentGame.gameId);
             setReceivedChallenges(pending);
             setActiveChallenges(active);
-
-            // Force update last fetch time
             lastFetchTimeRef.current = Date.now();
         } catch (error: any) {
-            console.error('Error responding to challenge:', error);
-            toast.error(error.message || 'Failed to respond to challenge');
+            toast.error(error.message || 'Failed to respond');
         } finally {
             setLoading(false);
         }
-    };
-
-    const pollForBothReady = async (challengePDA: PublicKey) => {
-        const maxAttempts = 60;
-        let attempts = 0;
-
-        const checkStatus = async () => {
-            if (attempts >= maxAttempts || !currentGame?.gameId) {
-                return;
-            }
-
-            try {
-                const active = await solanaGame.getActiveChallenges(currentGame.gameId);
-                const challenge = active.find(c => c.publicKey.equals(challengePDA));
-
-                if (challenge && (challenge.status.toLowerCase() === 'bothready')) {
-                    toast.success('Both players ready! Starting game...');
-                    setCurrentChallenge(challenge);
-                    await handleStartGame(challenge);
-                    return;
-                }
-
-                attempts++;
-                setTimeout(checkStatus, 1000);
-            } catch (error) {
-                console.error('Error checking challenge status:', error);
-            }
-        };
-
-        checkStatus();
     };
 
     const handleStartGame = async (challenge: Challenge) => {
@@ -285,18 +309,15 @@ export default function Phase2() {
         setLoading(true);
         try {
             await solanaGame.startMiniGame(challenge.publicKey);
-
             toast.success('Game started! 🎮');
             setCurrentChallenge(challenge);
             setShowGameModal(true);
         } catch (error: any) {
-            console.error('Error starting game:', error);
-
             if (error.message?.includes('InvalidChallengeStatus')) {
                 setCurrentChallenge(challenge);
                 setShowGameModal(true);
             } else {
-                toast.error(error.message || 'Failed to start game');
+                toast.error(error.message || 'Failed to start');
             }
         } finally {
             setLoading(false);
@@ -307,24 +328,19 @@ export default function Phase2() {
         setLoading(true);
         try {
             await solanaGame.markReady(challenge.publicKey);
-            toast.success('Marked as ready! ✓');
-
-            // Refresh challenges
+            toast.success('Marked as ready!');
             const active = await solanaGame.getActiveChallenges(currentGame.gameId);
             setActiveChallenges(active);
-
-            // Force update last fetch time
             lastFetchTimeRef.current = Date.now();
         } catch (error: any) {
-            console.error('Error marking ready:', error);
-            toast.error(error.message || 'Failed to mark ready');
+            toast.error(error.message || 'Failed');
         } finally {
             setLoading(false);
         }
     };
 
     const handleGameEnd = async (winner: PublicKey) => {
-        if (!currentChallenge || !currentGame?.gameId) return;
+        if (!currentChallenge || (currentGame?.gameId !== 0 && !currentGame?.gameId)) return;
 
         const loser = winner.equals(currentChallenge.challenger)
             ? currentChallenge.opponent
@@ -345,11 +361,8 @@ export default function Phase2() {
 
             const mine = await solanaGame.getMyChallenges(currentGame.gameId);
             setMyChallenges(mine);
-
-            // Force update last fetch time
             lastFetchTimeRef.current = Date.now();
         } catch (error: any) {
-            console.error('Error claiming win:', error);
             toast.error(error.message || 'Failed to claim win');
         }
     };
@@ -383,6 +396,151 @@ export default function Phase2() {
                     )}
                 </div>
 
+                {/* Requirements Banner */}
+                {gameRequirements && (
+                    <Card className="mb-8 border-2 border-sol-purple/30 bg-gradient-to-r from-sol-purple/10 to-sol-orange/10">
+                        <CardContent className="p-6">
+                            <div className="flex items-start gap-4">
+                                <Trophy className="w-8 h-8 text-sol-purple flex-shrink-0 mt-1" />
+                                <div className="flex-1">
+                                    <h3 className="text-xl font-bold mb-2">Phase 2 Requirements</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                        <div>
+                                            <p className="text-muted-foreground">Required Games</p>
+                                            <p className="text-2xl font-bold text-sol-orange">
+                                                {gameRequirements.requiredGames}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Min {Math.ceil(gameRequirements.requiredGames * 0.8)} to avoid penalty
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-muted-foreground">Max per Opponent</p>
+                                            <p className="text-2xl font-bold text-sol-purple">
+                                                {gameRequirements.maxGamesPerOpponent}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">Prevents farming</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-muted-foreground">Est. Time</p>
+                                            <p className="text-2xl font-bold text-green-400">
+                                                ~{gameRequirements.totalEstimatedTime}min
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {gameRequirements.recommendedTimePerGame}min per game
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {optimalDistribution && !optimalDistribution.warning && (
+                                        <Alert className="mt-4 border-blue-500/50 bg-blue-500/10">
+                                            <Target className="h-4 w-4" />
+                                            <AlertTitle>Strategy Tip</AlertTitle>
+                                            <AlertDescription>
+                                                {optimalDistribution.optimalDistribution} to complete requirements.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+
+                                    {optimalDistribution?.warning && (
+                                        <Alert className="mt-4 border-red-500/50 bg-red-500/10">
+                                            <AlertTriangle className="h-4 w-4" />
+                                            <AlertTitle>Warning</AlertTitle>
+                                            <AlertDescription>{optimalDistribution.warning}</AlertDescription>
+                                        </Alert>
+                                    )}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Player Progress Card */}
+                {playerStats && gameRequirements && progressStatus && (
+                    <Card className={`mb-8 border-2 ${eligibilityStatus?.eligible
+                        ? 'border-green-500/50 bg-green-500/10'
+                        : playerStats.participationRate! < 50
+                            ? 'border-red-500/50 bg-red-500/10'
+                            : 'border-yellow-500/50 bg-yellow-500/10'
+                        }`}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <TrendingUp className="w-5 h-5" />
+                                Your Progress
+                                <span className="ml-auto text-2xl">{progressStatus.icon}</span>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-2">
+                                        <span>Games Completed</span>
+                                        <span className="font-bold">
+                                            {playerStats.totalGamesPlayed} / {gameRequirements.requiredGames}
+                                        </span>
+                                    </div>
+                                    <div className="h-4 bg-secondary rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-500 ${eligibilityStatus?.eligible ? 'bg-green-500' :
+                                                playerStats.participationRate! < 50 ? 'bg-red-500' : 'bg-yellow-500'
+                                                }`}
+                                            style={{
+                                                width: `${Math.min(100, (playerStats.totalGamesPlayed / gameRequirements.requiredGames) * 100)}%`
+                                            }}
+                                        />
+                                    </div>
+                                    <p className={`text-sm mt-1 ${progressStatus.color}`}>
+                                        {progressStatus.message}
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="text-center p-3 rounded-lg bg-accent/50">
+                                        <p className="text-xs text-muted-foreground mb-1">Wins</p>
+                                        <p className="text-2xl font-bold text-green-400">{playerStats.gamesWon}</p>
+                                    </div>
+                                    <div className="text-center p-3 rounded-lg bg-accent/50">
+                                        <p className="text-xs text-muted-foreground mb-1">Losses</p>
+                                        <p className="text-2xl font-bold text-red-400">{playerStats.gamesLost}</p>
+                                    </div>
+                                    <div className="text-center p-3 rounded-lg bg-accent/50">
+                                        <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
+                                        <p className="text-2xl font-bold text-sol-orange">
+                                            {playerStats.totalGamesPlayed > 0
+                                                ? Math.round((playerStats.gamesWon / playerStats.totalGamesPlayed) * 100)
+                                                : 0}%
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {eligibilityStatus && (
+                                    <div className={`p-4 rounded-lg ${eligibilityStatus.eligible
+                                        ? 'bg-green-500/20 border border-green-500/30'
+                                        : 'bg-yellow-500/20 border border-yellow-500/30'
+                                        }`}>
+                                        <p className={`font-semibold ${eligibilityStatus.eligible ? 'text-green-400' : 'text-yellow-400'
+                                            }`}>
+                                            {eligibilityStatus.eligible
+                                                ? '✅ You meet the requirements!'
+                                                : `⚠️ ${eligibilityStatus.reason}`
+                                            }
+                                        </p>
+
+                                        {!eligibilityStatus.eligible && playerStats.participationRate !== undefined && (
+                                            <p className="text-sm text-muted-foreground mt-2">
+                                                {getPenaltyDescription(
+                                                    playerStats.totalGamesPlayed,
+                                                    gameRequirements.requiredGames
+                                                )}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Player Stats */}
                 <Card className="mb-8 border-2 border-sol-orange/30 bg-gradient-to-br from-background to-accent/20">
                     <CardHeader>
@@ -402,8 +560,10 @@ export default function Phase2() {
                                 </p>
                             </div>
                             <div className="text-center p-4 rounded-lg bg-accent/50">
-                                <p className="text-sm text-muted-foreground mb-2">Challenges Sent</p>
-                                <p className="text-3xl font-bold text-sol-purple">{myChallenges.length}</p>
+                                <p className="text-sm text-muted-foreground mb-2">Games Played</p>
+                                <p className="text-3xl font-bold text-sol-purple">
+                                    {playerStats?.totalGamesPlayed || 0}
+                                </p>
                             </div>
                             <div className="text-center p-4 rounded-lg bg-accent/50">
                                 <p className="text-sm text-muted-foreground mb-2">Challenges Received</p>
@@ -433,24 +593,30 @@ export default function Phase2() {
                                     {allPlayers.length === 0 ? (
                                         <div className="text-center py-8 text-muted-foreground">
                                             <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                            <p>No other players in this game yet</p>
+                                            <p>No other players yet</p>
                                         </div>
                                     ) : (
-                                        allPlayers.map((player, index) => {
+                                        allPlayers.map((player, idx) => {
                                             const isSelected = selectedPlayer?.toString() === player.address;
                                             const shortAddress = `${player.address.slice(0, 4)}...${player.address.slice(-4)}`;
+                                            const gamesPlayed = playerStats?.opponentPlayCounts.get(player.address) || 0;
+                                            const canChallenge = !gameRequirements || gamesPlayed < gameRequirements.maxGamesPerOpponent;
+
                                             return (
                                                 <button
-                                                    key={index}
-                                                    onClick={() => setSelectedPlayer(player.publicKey)}
-                                                    className={`w-full p-4 rounded-lg border-2 transition-all text-left relative group ${isSelected
-                                                        ? 'border-sol-orange bg-sol-orange/20 shadow-lg shadow-sol-orange/25 scale-[1.02]'
-                                                        : 'border-border/50 hover:border-sol-orange/50 hover:bg-accent/50'
+                                                    key={idx}
+                                                    onClick={() => canChallenge && setSelectedPlayer(player.publicKey)}
+                                                    disabled={!canChallenge}
+                                                    className={`w-full p-4 rounded-lg border-2 transition-all text-left relative ${!canChallenge
+                                                        ? 'border-red-500/30 bg-red-500/5 opacity-50 cursor-not-allowed'
+                                                        : isSelected
+                                                            ? 'border-sol-orange bg-sol-orange/20 shadow-lg shadow-sol-orange/25 scale-[1.02]'
+                                                            : 'border-border/50 hover:border-sol-orange/50 hover:bg-accent/50'
                                                         }`}
                                                 >
                                                     <div className="flex justify-between items-center">
                                                         <div className="flex items-center gap-3">
-                                                            {isSelected && (
+                                                            {isSelected && canChallenge && (
                                                                 <div className="w-6 h-6 rounded-full bg-sol-orange flex items-center justify-center flex-shrink-0">
                                                                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -459,7 +625,9 @@ export default function Phase2() {
                                                             )}
                                                             <div>
                                                                 <span className="font-mono text-sm font-medium block">{shortAddress}</span>
-                                                                <span className="text-xs text-muted-foreground">Player {index + 1}</span>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    Player {idx + 1} • Played: {gamesPlayed}/{gameRequirements?.maxGamesPerOpponent || 0}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
@@ -469,6 +637,13 @@ export default function Phase2() {
                                                             <div className="text-xs text-muted-foreground">SOL</div>
                                                         </div>
                                                     </div>
+                                                    {!canChallenge && (
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                                                            <span className="text-xs font-semibold text-red-400">
+                                                                Max games reached
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </button>
                                             );
                                         })
@@ -532,7 +707,15 @@ export default function Phase2() {
 
                             <Button
                                 variant="sol"
-                                onClick={sendChallenge}
+                                onClick={() => {
+                                    console.log('🔴 Button click:', {
+                                        selectedPlayer: selectedPlayer?.toBase58(),
+                                        challengeAmount,
+                                        selectedGameType,
+                                        gameId: currentGame?.gameId
+                                    });
+                                    sendChallenge();
+                                }}
                                 disabled={!selectedPlayer || !challengeAmount || !selectedGameType || loading}
                                 className="w-full mt-2 h-12 text-base font-bold"
                             >
@@ -545,6 +728,9 @@ export default function Phase2() {
                                     <>
                                         <Swords className="w-5 h-5 mr-2" />
                                         Send Challenge
+                                        <span className="ml-2 text-xs opacity-50">
+                                            ({selectedPlayer ? '✓' : '✗'} {challengeAmount ? '✓' : '✗'} {selectedGameType ? '✓' : '✗'})
+                                        </span>
                                     </>
                                 )}
                             </Button>
@@ -643,15 +829,6 @@ export default function Phase2() {
                                         ? challenge.opponent.toBase58()
                                         : challenge.challenger.toBase58();
                                     const gameTypeData = gameTypes.find(g => g.id === challenge.gameType);
-
-                                    // Debug log
-                                    console.log('Challenge status check:', {
-                                        id: challenge.challengeId,
-                                        status: challenge.status,
-                                        isAccepted: checkStatus(challenge, 'Accepted'),
-                                        isBothReady: checkStatus(challenge, 'BothReady'),
-                                        isInProgress: checkStatus(challenge, 'InProgress')
-                                    });
 
                                     return (
                                         <div

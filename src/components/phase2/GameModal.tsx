@@ -32,7 +32,7 @@ export default function GameModal({
     onGameEnd,
     onClose
 }: GameModalProps) {
-    const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
+    const [timeLeft, setTimeLeft] = useState(180);
     const [canClose, setCanClose] = useState(false);
     const [gameResult, setGameResult] = useState<{
         winner: PublicKey;
@@ -43,6 +43,28 @@ export default function GameModal({
 
     const isChallenger = challenger.equals(myAddress);
     const opponentAddress = isChallenger ? opponent : challenger;
+
+    // 🔍 Debug logging
+    useEffect(() => {
+        console.log('🎮 [GameModal] Initialized with:', {
+            gameType,
+            challengeId,
+            isChallenger,
+            myAddress: myAddress.toBase58(),
+            challenger: challenger.toBase58(),
+            opponent: opponent.toBase58(),
+            betAmount
+        });
+    }, []);
+
+    useEffect(() => {
+        console.log('🎮 [GameModal] State changed:', {
+            gameStarted,
+            canClose,
+            timeLeft,
+            hasResult: !!gameResult
+        });
+    }, [gameStarted, canClose, timeLeft, gameResult]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -77,6 +99,7 @@ export default function GameModal({
     }, [canClose, gameStarted]);
 
     const handleGameComplete = async (winner: PublicKey) => {
+        console.log('🎮 [GameModal] Game completed! Winner:', winner.toBase58());
         const loser = winner.equals(challenger) ? opponent : challenger;
         setGameResult({ winner, loser });
         setCanClose(true);
@@ -98,6 +121,11 @@ export default function GameModal({
         }
     };
 
+    const handleGameStart = () => {
+        console.log('🎮 [GameModal] Game started!');
+        setGameStarted(true);
+    };
+
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -112,6 +140,8 @@ export default function GameModal({
             case 'MemeBattle': return '🎭 Meme Battle';
         }
     };
+
+    console.log('🎮 [GameModal] Rendering with gameType:', gameType);
 
     return (
         <div
@@ -169,49 +199,59 @@ export default function GameModal({
 
                 {/* Game Content */}
                 <div className="p-6">
-                    {gameType === 'CryptoTrivia' && (
+                    {/* Normalize gameType for comparison */}
+                    {gameType.toLowerCase() === 'cryptotrivia' && (
                         <CryptoTriviaGame
                             onComplete={handleGameComplete}
                             challenger={challenger}
                             opponent={opponent}
                             myAddress={myAddress}
                             challengeId={challengeId}
-                            onGameStart={() => setGameStarted(true)}
+                            onGameStart={handleGameStart}
                         />
                     )}
 
-                    {gameType === 'RockPaperScissors' && (
+                    {gameType.toLowerCase() === 'rockpaperscissors' && (
                         <RockPaperScissorsGame
                             onComplete={handleGameComplete}
                             challenger={challenger}
                             opponent={opponent}
                             myAddress={myAddress}
                             challengeId={challengeId}
-                            onGameStart={() => setGameStarted(true)}
+                            onGameStart={handleGameStart}
                         />
                     )}
 
-                    {gameType === 'SpeedTrading' && (
+                    {gameType.toLowerCase() === 'speedtrading' && (
                         <SpeedTradingGame
                             onComplete={handleGameComplete}
                             challenger={challenger}
                             opponent={opponent}
                             myAddress={myAddress}
                             challengeId={challengeId}
-                            onGameStart={() => setGameStarted(true)}
+                            onGameStart={handleGameStart}
                         />
                     )}
 
-                    {gameType === 'MemeBattle' && (
+                    {gameType.toLowerCase() === 'memebattle' && (
                         <MemeBattleGame
                             onComplete={handleGameComplete}
                             challenger={challenger}
                             opponent={opponent}
                             myAddress={myAddress}
                             challengeId={challengeId}
-                            onGameStart={() => setGameStarted(true)}
+                            onGameStart={handleGameStart}
                         />
                     )}
+
+                    {/* 🔍 Debug info */}
+                    <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs">
+                        <p className="font-mono">Game Type (raw): {gameType}</p>
+                        <p className="font-mono">Game Type (lower): {gameType.toLowerCase()}</p>
+                        <p className="font-mono">Game Started: {gameStarted ? 'Yes' : 'No'}</p>
+                        <p className="font-mono">Can Close: {canClose ? 'Yes' : 'No'}</p>
+                        <p className="font-mono">Time Left: {timeLeft}s</p>
+                    </div>
                 </div>
 
                 {/* Result Display */}

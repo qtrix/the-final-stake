@@ -1,3 +1,4 @@
+// src/pages/Phase1.tsx - VERSIUNE FINALĂ COMPLETĂ
 import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pickaxe, Sprout, TrendingUp, FlaskConical, Users, Loader2, Clock, ArrowRight } from 'lucide-react';
@@ -14,7 +15,6 @@ import RewardsPanel from "@/components/phase1/RewardsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import EventsTicker, { GameEvent as UIGameEvent } from "@/components/phase1/EventsTicker";
-
 
 export default function Phase1() {
   const navigate = useNavigate();
@@ -43,6 +43,7 @@ export default function Phase1() {
     social: 20
   });
 
+  // ✅ Fetch and process game events from contract
   useEffect(() => {
     if (!currentGame?.gameId || !solanaGame.program) return;
 
@@ -193,7 +194,7 @@ export default function Phase1() {
     return () => clearInterval(timer);
   }, [currentGame, wallet.publicKey]);
 
-  // Fetch player state and pool state ONCE when game is found
+  // ✅ Fetch player state and pool state ONCE when game is found
   useEffect(() => {
     if (!currentGame || !wallet.publicKey) return;
 
@@ -210,7 +211,7 @@ export default function Phase1() {
 
         if (!isMounted) return;
 
-        // ✅ FIX: Normalize player state from lamports to SOL
+        // ✅ Normalize player state from lamports to SOL
         if (playerData) {
           console.log('🎮 Raw Player State (before normalization):', playerData);
           console.log('💰 Raw virtualBalance:', playerData.virtualBalance, 'lamports');
@@ -280,7 +281,7 @@ export default function Phase1() {
     };
   }, [currentGame?.gameId, wallet.publicKey?.toBase58()]);
 
-  // ✅ FIX: Periodic fetching every 15 seconds with normalization
+  // ✅ Periodic fetching every 15 seconds with normalization
   useEffect(() => {
     if (!currentGame?.gameId || !wallet.publicKey || !solanaGame.program) return;
 
@@ -293,7 +294,7 @@ export default function Phase1() {
         ]);
 
         if (playerData) {
-          // ✅ FIX: Normalize from lamports to SOL
+          // ✅ Normalize from lamports to SOL
           const normalizedPlayerState = {
             ...playerData,
             virtualBalance: playerData.virtualBalance / 1e9,
@@ -321,7 +322,7 @@ export default function Phase1() {
       } catch (error) {
         console.error('❌ Error during 15s update:', error);
       }
-    }, 15000); // ✅ Changed to 15 seconds
+    }, 15000);
 
     return () => clearInterval(intervalId);
   }, [currentGame?.gameId, wallet.publicKey?.toBase58(), solanaGame.program]);
@@ -522,7 +523,6 @@ export default function Phase1() {
     try {
       await solanaGame.advancePhase(currentGame.gameId, (progress) => {
         console.log('Phase advance progress:', progress);
-        // Optional: You can show progress in UI
         toast({
           title: progress.step,
           description: `Progress: ${progress.progress}%`,
@@ -571,7 +571,7 @@ export default function Phase1() {
     }
   };
 
-  // ✅ FIX: Calculate pending rewards using SOL values (already normalized)
+  // ✅ Calculate pending rewards using SOL values (already normalized)
   const [pendingRewardsData, setPendingRewardsData] = useState({
     total: 0,
     byPool: { mining: 0, farming: 0, trading: 0, research: 0, social: 0 }
@@ -699,7 +699,7 @@ export default function Phase1() {
     );
   }
 
-  // ✅ FIX: Calculate virtualBalance as entry_fee * 10
+  // ✅ Calculate virtualBalance as entry_fee * 10
   const virtualBalance = playerState?.virtualBalance || (currentGame.entryFee * 10);
 
   // Resource pool definitions (after null check)
@@ -861,7 +861,6 @@ export default function Phase1() {
                             title: "Pool Initialized!",
                             description: "Resource pool state has been initialized. Players can now initialize their states.",
                           });
-                          // Refresh pool state
                           const poolData = await solanaGame.getPoolState(currentGame.gameId);
                           setPoolState(poolData);
                         } catch (error: any) {
@@ -916,7 +915,6 @@ export default function Phase1() {
                         description: "You can now allocate resources and play the game.",
                       });
 
-                      // Refresh player state with normalization
                       const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey);
                       if (playerData) {
                         const normalizedPlayerState = {
@@ -1001,6 +999,7 @@ export default function Phase1() {
           )}
 
           {/* Events Ticker */}
+          {console.log('🎬 Current gameEvents:', gameEvents)}
           <EventsTicker events={gameEvents} />
 
           {/* Rewards Panel and Allocation Summary */}
@@ -1016,7 +1015,7 @@ export default function Phase1() {
               totalPending={pendingRewardsData.total}
               onClaimRewards={handleClaimRewards}
               isClaiming={isClaiming}
-              phaseEnded={phaseEnded}  // ✅ Pass phaseEnded prop
+              phaseEnded={phaseEnded}
             />
             <AllocationBar
               pools={allocationData}

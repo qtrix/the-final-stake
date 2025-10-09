@@ -1,11 +1,13 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+// src/hooks/useSolanaGame.tsx - VERSIUNE FINALĂ COMPLETĂ
+import { useEffect, useState, useRef } from 'react';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, web3, BN } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import solanaIdl from '../lib/solana_survivor.json';
 import bs58 from 'bs58';
 
-const PROGRAM_ID = new PublicKey(solanaIdl.address);
+// ✅ UPDATED PROGRAM ID - deployed contract
+const PROGRAM_ID = new PublicKey('AU3td9Pd4mU5XTn8fQUwKjZZhMsizEpQNjtbMBbfvJvi');
 
 export interface Game {
   gameId: number;
@@ -30,7 +32,11 @@ export interface Game {
     phase3Duration: number;
   };
   txSignature?: string;
+  // ✅ NEW: Phase 2 requirements calculated by contract
+  phase2RequiredGames: number;
+  phase2MaxGamesPerOpponent: number;
 }
+
 export interface GameEvent {
   eventType: 'SeasonChange' | 'MarketShift' | 'Breakthrough' | 'WhaleEntry';
   poolAffected: 'Mining' | 'Farming' | 'Trading' | 'Research' | 'Social';
@@ -64,6 +70,14 @@ export interface PlayerGameState {
   };
 }
 
+// ✅ NEW: Phase 2 player statistics
+export interface PlayerPhase2Stats {
+  totalGamesPlayed: number;
+  gamesWon: number;
+  gamesLost: number;
+  opponentPlayCounts: Record<string, number>;
+}
+
 export type MiniGameType = 'CryptoTrivia' | 'RockPaperScissors' | 'SpeedTrading' | 'MemeBattle';
 export type ChallengeStatus = 'Pending' | 'Accepted' | 'BothReady' | 'InProgress' | 'Completed' | 'Expired' | 'ForcedAccept';
 
@@ -73,7 +87,7 @@ export interface Challenge {
   gameId: number;
   challenger: PublicKey;
   opponent: PublicKey;
-  betAmount: number; // in SOL
+  betAmount: number;
   gameType: MiniGameType;
   status: ChallengeStatus;
   createdAt: Date;
@@ -96,19 +110,19 @@ export interface GamePoolState {
 
 export interface InitProgress {
   status: 'idle' | 'starting' | 'initializing-players' | 'initializing-pool' | 'ready' | 'error';
-  progress: number; // 0-100
+  progress: number;
   currentStep: string;
   error?: string;
 }
 
 export interface PhaseAdvanceProgress {
   step: string;
-  progress: number; // 0-100
+  progress: number;
   current?: number;
   total?: number;
 }
 
-// PDA Derivation Functions
+// PDA Derivation Functions - these must match the contract exactly
 export function getGameRegistryPDA(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("game_registry")],
@@ -167,7 +181,7 @@ export function useSolanaGame() {
   const [loading, setLoading] = useState(false);
   const [initializationAttempts, setInitializationAttempts] = useState(0);
 
-  // Refs to prevent duplicate fetches and race conditions
+  // Rate limiting to prevent excessive RPC calls
   const fetchInProgressRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
   const FETCH_COOLDOWN_MS = 5000;
@@ -179,14 +193,14 @@ export function useSolanaGame() {
     attempts: initializationAttempts
   });
 
-  // Initialize Anchor program
+  // Initialize Anchor program connection
   useEffect(() => {
     const initializeProgram = async () => {
       setInitializationAttempts(prev => prev + 1);
       console.log('=== PROGRAM INITIALIZATION ATTEMPT ===', initializationAttempts + 1);
 
       try {
-        console.log('🚀 Starting Anchor program initialization...');
+        console.log('🚀 Starting Anchor program initialization with new Program ID...');
         const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
 
         let provider;
@@ -205,7 +219,7 @@ export function useSolanaGame() {
 
         const prog = new Program(solanaIdl as any, provider);
         setProgram(prog);
-        console.log('✅ Program state updated');
+        console.log('✅ Program initialized with ID:', PROGRAM_ID.toBase58());
 
         console.log('🎮 Fetching existing games...');
         await fetchGames(prog);
@@ -248,8 +262,6 @@ export function useSolanaGame() {
 
       const formattedGames: Game[] = accounts.map((acc: any) => {
         const g = acc.account;
-
-        // Convert status to PascalCase to match TypeScript type
         const rawStatus = Object.keys(g.status)[0];
         const status = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
 
@@ -276,6 +288,9 @@ export function useSolanaGame() {
             phase3Duration: g.phases?.phase3Duration?.toNumber() || 0,
           },
           txSignature: acc.publicKey.toBase58(),
+          // ✅ Read Phase 2 requirements from contract
+          phase2RequiredGames: g.phase2RequiredGames || 5,
+          phase2MaxGamesPerOpponent: g.phase2MaxGamesPerOpponent || 3,
         };
       });
 
@@ -290,7 +305,7 @@ export function useSolanaGame() {
     }
   };
 
-  // Fetch player state for a specific game and player
+  // Fetch player state and normalize from lamports to SOL
   const getPlayerState = async (gameId: number, playerPubkey?: PublicKey): Promise<PlayerGameState | null> => {
     if (!program || !playerPubkey) return null;
 
@@ -304,6 +319,7 @@ export function useSolanaGame() {
         lastClaimTime: playerState.lastClaimTime?.toNumber() || 0,
       });
 
+      // ✅ Normalize from lamports to SOL for easier frontend calculations
       return {
         player: playerState.player.toString(),
         virtualBalance: playerState.virtualBalance.toNumber(),
@@ -319,12 +335,12 @@ export function useSolanaGame() {
         },
       };
     } catch (error: any) {
-      console.warn(`⚠️ Player state not found for ${playerPubkey.toBase58().slice(0, 8)}... (may not be initialized yet)`);
+      console.warn(`⚠️ Player state not found for ${playerPubkey.toBase58().slice(0, 8)}...`);
       return null;
     }
   };
 
-  // Fetch pool state for a specific game
+  // Fetch pool state and normalize from lamports to SOL
   const getPoolState = async (gameId: number): Promise<GamePoolState | null> => {
     if (!program) return null;
 
@@ -343,8 +359,85 @@ export function useSolanaGame() {
         tradingMarketState: poolState.tradingMarketState,
       };
     } catch (error) {
-      // Silent fail - state not initialized yet is expected
       return null;
+    }
+  };
+
+  // ✅ NEW: Get player's Phase 2 statistics by analyzing completed challenges
+  const getPlayerPhase2Stats = async (
+    gameId: number,
+    playerPubkey: PublicKey
+  ): Promise<PlayerPhase2Stats> => {
+    if (!program) {
+      return {
+        totalGamesPlayed: 0,
+        gamesWon: 0,
+        gamesLost: 0,
+        opponentPlayCounts: {}
+      };
+    }
+
+    try {
+      // Fetch all challenges for this game
+      const allChallenges = await (program.account as any).challenge.all([
+        {
+          memcmp: {
+            offset: 8 + 8, // discriminator + challenge_id
+            bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
+          }
+        }
+      ]);
+
+      const playerAddress = playerPubkey.toBase58();
+
+      let totalGamesPlayed = 0;
+      let gamesWon = 0;
+      let gamesLost = 0;
+      const opponentPlayCounts: Record<string, number> = {};
+
+      // Analyze each challenge to build statistics
+      allChallenges.forEach((c: any) => {
+        const challenge = c.account;
+        const isParticipant =
+          challenge.challenger.toBase58() === playerAddress ||
+          challenge.opponent.toBase58() === playerAddress;
+
+        if (!isParticipant) return;
+
+        // Only count completed games with a winner
+        if (challenge.status.completed && challenge.winner) {
+          totalGamesPlayed++;
+
+          const opponentAddr = challenge.challenger.toBase58() === playerAddress
+            ? challenge.opponent.toBase58()
+            : challenge.challenger.toBase58();
+
+          // Track how many games played against each opponent
+          opponentPlayCounts[opponentAddr] = (opponentPlayCounts[opponentAddr] || 0) + 1;
+
+          // Track wins and losses
+          if (challenge.winner.toBase58() === playerAddress) {
+            gamesWon++;
+          } else {
+            gamesLost++;
+          }
+        }
+      });
+
+      return {
+        totalGamesPlayed,
+        gamesWon,
+        gamesLost,
+        opponentPlayCounts
+      };
+    } catch (error) {
+      console.error('Error fetching player Phase 2 stats:', error);
+      return {
+        totalGamesPlayed: 0,
+        gamesWon: 0,
+        gamesLost: 0,
+        opponentPlayCounts: {}
+      };
     }
   };
 
@@ -419,7 +512,7 @@ export function useSolanaGame() {
     }
   };
 
-  // Smart Game Initialization with Batching (for already started games)
+  // Batch initialize all player states in a game (for already started games)
   const batchInitializeGameStates = async (
     gameId: number,
     onProgress?: (progress: InitProgress) => void
@@ -431,7 +524,6 @@ export function useSolanaGame() {
     try {
       const [gamePDA] = getGamePDA(program.programId, gameId);
 
-      // Step 1: Get player list from game
       onProgress?.({
         status: 'initializing-players',
         progress: 10,
@@ -441,7 +533,7 @@ export function useSolanaGame() {
       const game = await (program.account as any).game.fetch(gamePDA);
       const players = game.players;
 
-      // Step 2: Initialize players in batches of 10 (parallel)
+      // Process players in batches of 10 to avoid overwhelming the network
       const BATCH_SIZE = 10;
       const batches = [];
       for (let i = 0; i < players.length; i += BATCH_SIZE) {
@@ -458,7 +550,7 @@ export function useSolanaGame() {
           currentStep: `Initializing players ${i * BATCH_SIZE + 1}-${Math.min((i + 1) * BATCH_SIZE, players.length)} of ${players.length}...`,
         });
 
-        // Initialize batch in parallel
+        // Initialize all players in this batch in parallel
         const initPromises = batch.map(async (player: PublicKey) => {
           try {
             const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, player);
@@ -483,7 +575,6 @@ export function useSolanaGame() {
         await Promise.allSettled(initPromises);
       }
 
-      // Step 3: Initialize pool state
       onProgress?.({
         status: 'initializing-pool',
         progress: 90,
@@ -501,7 +592,6 @@ export function useSolanaGame() {
         })
         .rpc();
 
-      // Done!
       onProgress?.({
         status: 'ready',
         progress: 100,
@@ -520,7 +610,7 @@ export function useSolanaGame() {
     }
   };
 
-  // Start game WITH batch initialization (for new games)
+  // Start game with automatic batch initialization
   const startGameWithBatchInit = async (
     gameId: number,
     onProgress?: (progress: InitProgress) => void
@@ -530,7 +620,6 @@ export function useSolanaGame() {
     }
 
     try {
-      // Step 1: Start game
       onProgress?.({
         status: 'starting',
         progress: 5,
@@ -546,7 +635,7 @@ export function useSolanaGame() {
         })
         .rpc();
 
-      // Step 2: Now do batch initialization
+      // Now initialize all states
       await batchInitializeGameStates(gameId, (progress) => {
         // Adjust progress to account for start_game (5% done)
         onProgress?.({
@@ -565,7 +654,6 @@ export function useSolanaGame() {
     }
   };
 
-  // Initialize individual player state
   const initializePlayerState = async (gameId: number): Promise<void> => {
     if (!program || !wallet.publicKey) {
       throw new Error('Wallet not connected or program not initialized');
@@ -587,7 +675,6 @@ export function useSolanaGame() {
     await fetchGames(program);
   };
 
-  // Initialize pool state (creator only)
   const initializePoolState = async (gameId: number): Promise<void> => {
     if (!program || !wallet.publicKey) {
       throw new Error('Wallet not connected or program not initialized');
@@ -609,7 +696,7 @@ export function useSolanaGame() {
     await fetchGames(program);
   };
 
-  // Submit Allocations (3 accounts needed)
+  // Submit resource allocations - converts SOL amounts to lamports for contract
   const submitAllocations = async (
     gameId: number,
     allocations: {
@@ -639,14 +726,6 @@ export function useSolanaGame() {
       social: new BN(Math.floor(allocations.social * LAMPORTS_PER_SOL))
     };
 
-    console.log('📤 Submitting allocations (lamports):', {
-      mining: allocationsInLamports.mining.toString(),
-      farming: allocationsInLamports.farming.toString(),
-      trading: allocationsInLamports.trading.toString(),
-      research: allocationsInLamports.research.toString(),
-      social: allocationsInLamports.social.toString()
-    });
-
     const tx = await program.methods
       .submitAllocations(
         allocationsInLamports.mining,
@@ -667,7 +746,7 @@ export function useSolanaGame() {
     return tx;
   };
 
-  // Claim Rewards (3 accounts needed)
+  // Claim ongoing rewards during phase
   const claimRewards = async (gameId: number): Promise<string> => {
     if (!program || !wallet.publicKey) {
       throw new Error('Wallet not connected or program not initialized');
@@ -690,7 +769,7 @@ export function useSolanaGame() {
     return tx;
   };
 
-  // Claim Phase End Rewards (for all players before advancing phase)
+  // Claim rewards for all players at phase end (used for batch processing)
   const claimAllPhaseEndRewards = async (
     gameId: number,
     onProgress?: (current: number, total: number) => void
@@ -744,7 +823,7 @@ export function useSolanaGame() {
     }
   };
 
-  // Simplified Advance Phase - only advances and claims for creator
+  // Advance to next phase (simplified - only advances and claims for caller)
   const advancePhase = async (
     gameId: number,
     onProgress?: (progress: PhaseAdvanceProgress) => void
@@ -754,7 +833,6 @@ export function useSolanaGame() {
     }
 
     try {
-      // Step 1: Advance phase
       onProgress?.({ step: 'Advancing to next phase...', progress: 50 });
 
       const [gamePDA] = getGamePDA(program.programId, gameId);
@@ -768,7 +846,7 @@ export function useSolanaGame() {
 
       onProgress?.({ step: 'Phase advanced! Claiming your rewards...', progress: 75 });
 
-      // Step 2: Claim rewards for the creator (caller)
+      // Claim rewards for the caller
       const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
       const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
 
@@ -792,8 +870,6 @@ export function useSolanaGame() {
       throw error;
     }
   };
-
-
 
   const startGame = async (gameId: number) => {
     if (!program || !wallet.publicKey) {
@@ -897,7 +973,7 @@ export function useSolanaGame() {
     const timestamp = Math.floor(Date.now() / 1000);
     const [challengePDA] = getChallengePDA(program.programId, gameId, wallet.publicKey, opponent, timestamp);
 
-    // Convert game type to enum format
+    // Convert game type to enum format expected by contract
     const gameTypeEnum = {
       CryptoTrivia: { cryptoTrivia: {} },
       RockPaperScissors: { rockPaperScissors: {} },
@@ -917,6 +993,7 @@ export function useSolanaGame() {
         game: gamePDA,
         playerState: playerStatePDA,
         challenger: wallet.publicKey,
+        opponent: opponent,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -1021,7 +1098,7 @@ export function useSolanaGame() {
       const challenges = await (program.account as any).challenge.all([
         {
           memcmp: {
-            offset: 8 + 8, // After discriminator + challenge_id
+            offset: 8 + 8, // discriminator + challenge_id
             bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
           }
         }
@@ -1128,9 +1205,7 @@ export function useSolanaGame() {
     }
   };
 
-
-
-  // Add this function to the hook
+  // Fetch game events from the contract
   const getGameEvents = async (gameId: number): Promise<GameEvent[]> => {
     if (!program) return [];
 
@@ -1140,13 +1215,11 @@ export function useSolanaGame() {
 
       const events: GameEvent[] = [];
 
-      // Parse events from the game account
       if (game.events && Array.isArray(game.events)) {
         game.events.forEach((event: any) => {
           const eventType = Object.keys(event.eventType)[0];
           const poolAffected = Object.keys(event.poolAffected)[0];
 
-          // Map contract event types to frontend types
           const mappedEvent: GameEvent = {
             eventType: eventType as GameEvent['eventType'],
             poolAffected: poolAffected as GameEvent['poolAffected'],
@@ -1161,7 +1234,6 @@ export function useSolanaGame() {
         });
       }
 
-      console.log('📊 Fetched game events:', events);
       return events;
     } catch (error) {
       console.error('Error fetching game events:', error);
@@ -1199,5 +1271,6 @@ export function useSolanaGame() {
     getActiveChallenges,
     getMyChallenges,
     getGameEvents,
+    getPlayerPhase2Stats, // ✅ NEW
   };
 }
