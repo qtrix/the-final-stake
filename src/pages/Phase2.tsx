@@ -1,4 +1,4 @@
-// src/pages/Phase2.tsx - VERSIUNE COMPLETĂ CU TOT DESIGN-UL ORIGINAL
+// src/pages/Phase2.tsx - COMPLETE VERSION WITH RETRY LOGIC AND ADVANCE TO PHASE 3
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import ParticleBackground from '@/components/ParticleBackground';
 import Navbar from '@/components/Navbar';
-import CountdownTimer from '@/components/CountdownTimer';
+import PhaseCountdown from '@/components/PhaseCountdown';
 import GameModal from '@/components/phase2/GameModal';
+import TransactionOverlay from '@/components/TransactionOverlay';
 import {
     Swords, Users, Trophy, Coins, ArrowLeft, Loader2, Clock, Zap,
-    AlertTriangle, Target, TrendingUp
+    AlertTriangle, Target, TrendingUp, ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -25,6 +26,48 @@ import {
     calculateOptimalGameDistribution,
     type PlayerGameStats
 } from '@/lib/gameFormulas';
+
+// ✅ Helper function to retry transactions with fresh blockhash
+const retryTransaction = async <T,>(
+    operation: () => Promise<T>,
+    operationName: string,
+    maxRetries: number = 3
+): Promise<T> => {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🔄 [${operationName}] Attempt ${attempt}/${maxRetries}`);
+            const result = await operation();
+            console.log(`✅ [${operationName}] Success on attempt ${attempt}`);
+            return result;
+        } catch (error: any) {
+            lastError = error;
+            const errorMessage = error?.message || String(error);
+
+            // Check if error is retryable
+            const isRetryable =
+                errorMessage.includes('already been processed') ||
+                errorMessage.includes('Blockhash not found') ||
+                errorMessage.includes('block height exceeded') ||
+                errorMessage.includes('Transaction simulation failed');
+
+            console.error(`❌ [${operationName}] Attempt ${attempt} failed:`, errorMessage);
+
+            if (!isRetryable || attempt === maxRetries) {
+                console.error(`❌ [${operationName}] Non-retryable error or max retries reached`);
+                throw error;
+            }
+
+            // Exponential backoff: 1s, 2s, 4s
+            const delay = Math.pow(2, attempt - 1) * 1000;
+            console.log(`⏳ [${operationName}] Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    throw lastError;
+};
 
 export default function Phase2() {
     const navigate = useNavigate();
@@ -41,6 +84,7 @@ export default function Phase2() {
     const [receivedChallenges, setReceivedChallenges] = useState<Challenge[]>([]);
     const [activeChallenges, setActiveChallenges] = useState<Challenge[]>([]);
     const [loading, setLoading] = useState(false);
+    const [transactionLoading, setTransactionLoading] = useState(false);
     const [showGameModal, setShowGameModal] = useState(false);
     const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
 
@@ -49,15 +93,18 @@ export default function Phase2() {
     const [eligibilityStatus, setEligibilityStatus] = useState<any>(null);
     const [progressStatus, setProgressStatus] = useState<any>(null);
     const [optimalDistribution, setOptimalDistribution] = useState<any>(null);
+    const [lastGameCompletedTime, setLastGameCompletedTime] = useState(0);
+    const [phaseExpired, setPhaseExpired] = useState(false);
+
+    const [canAdvanceToPhase3, setCanAdvanceToPhase3] = useState(false);
+    const [timeUntilAdvance, setTimeUntilAdvance] = useState<string>('');
+    const [isCreator, setIsCreator] = useState(false);
 
     const lastFetchTimeRef = useRef<number>(0);
     const FETCH_INTERVAL = 20000;
 
     const gameTypes: { id: MiniGameType; name: string; icon: string; description: string }[] = [
-        { id: 'CryptoTrivia', name: 'Crypto Trivia', icon: '🧠', description: '10 questions, 10s each' },
-        { id: 'RockPaperScissors', name: 'Crypto Battle', icon: '✂️', description: 'Best of 5 rounds' },
-        { id: 'SpeedTrading', name: 'Speed Trading', icon: '📈', description: '60s to maximize profit' },
-        { id: 'MemeBattle', name: 'Meme Battle', icon: '🎭', description: 'Best of 3 meme showdown' },
+        { id: 'RockPaperScissors', name: 'Rock Paper Scissors', icon: '✂️', description: 'Best of 5 rounds' },
     ];
 
     const checkStatus = (challenge: Challenge, statusToCheck: string): boolean => {
@@ -65,6 +112,9 @@ export default function Phase2() {
     };
 
     useEffect(() => {
+        if (!window.location.pathname.includes('/phase2')) {
+            return;
+        }
         if (!wallet.publicKey) {
             navigate('/');
             return;
@@ -86,10 +136,56 @@ export default function Phase2() {
         if (game) {
             console.log('✅ Game found:', game.gameId);
             setCurrentGame(game);
+            setIsCreator(game.creator === wallet.publicKey.toBase58());
+
+            const now = new Date().getTime();
+            const phaseEnd = new Date(game.phaseEndTime).getTime();
+            setPhaseExpired(now >= phaseEnd);
         } else {
             toast.error(`Game ${gameId} not found`);
         }
     }, [wallet.publicKey, solanaGame.games, navigate]);
+
+    useEffect(() => {
+        if (!currentGame || !wallet.publicKey) return;
+
+        const updateAdvanceTimer = () => {
+            const now = Date.now();
+            const phaseEndTime = new Date(currentGame.phaseEndTime).getTime();
+            const timeoutDeadline = phaseEndTime + 600000; // 10 minutes after phase end
+
+            if (now < phaseEndTime) {
+                setPhaseExpired(false);
+                setCanAdvanceToPhase3(false);
+
+                const diff = phaseEndTime - now;
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setTimeUntilAdvance(`Phase ends in ${minutes}m ${seconds}s`);
+            } else if (now >= phaseEndTime && now < timeoutDeadline) {
+                setPhaseExpired(true);
+
+                if (isCreator) {
+                    setCanAdvanceToPhase3(true);
+                    setTimeUntilAdvance('Creator can advance now');
+                } else {
+                    const diff = timeoutDeadline - now;
+                    const minutes = Math.floor(diff / 60000);
+                    const seconds = Math.floor((diff % 60000) / 1000);
+                    setCanAdvanceToPhase3(false);
+                    setTimeUntilAdvance(`Waiting for creator (${minutes}m ${seconds}s until timeout)`);
+                }
+            } else {
+                setPhaseExpired(true);
+                setCanAdvanceToPhase3(true);
+                setTimeUntilAdvance('Anyone can advance now');
+            }
+        };
+
+        updateAdvanceTimer();
+        const interval = setInterval(updateAdvanceTimer, 1000);
+        return () => clearInterval(interval);
+    }, [currentGame, wallet.publicKey, isCreator]);
 
     useEffect(() => {
         if (!currentGame) return;
@@ -110,8 +206,7 @@ export default function Phase2() {
 
     useEffect(() => {
         const fetchPlayerStats = async () => {
-            if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
-            if (!wallet.publicKey || !gameRequirements) return;
+            if (!currentGame?.gameId || !wallet.publicKey || !gameRequirements) return;
 
             const stats = await solanaGame.getPlayerPhase2Stats(
                 currentGame.gameId,
@@ -145,16 +240,13 @@ export default function Phase2() {
         };
 
         fetchPlayerStats();
-        const interval = setInterval(fetchPlayerStats, 15000);
-        return () => clearInterval(interval);
-    }, [currentGame?.gameId, wallet.publicKey, gameRequirements]);
+    }, [currentGame?.gameId, wallet.publicKey, gameRequirements, lastGameCompletedTime]);
 
     useEffect(() => {
         const fetchData = async () => {
             const now = Date.now();
             if (now - lastFetchTimeRef.current < FETCH_INTERVAL) return;
-            if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
-            if (!wallet.publicKey || !solanaGame.program) return;
+            if (!currentGame?.gameId || !wallet.publicKey || !solanaGame.program) return;
 
             try {
                 lastFetchTimeRef.current = now;
@@ -187,13 +279,13 @@ export default function Phase2() {
                 const otherPlayers = playersData.filter(p => p.address !== wallet.publicKey.toBase58());
                 setAllPlayers(otherPlayers);
 
-                const pending = await solanaGame.getPendingChallenges(currentGame.gameId);
-                const active = await solanaGame.getActiveChallenges(currentGame.gameId);
-                const mine = await solanaGame.getMyChallenges(currentGame.gameId);
+                const [pending, active] = await Promise.all([
+                    solanaGame.getPendingChallenges(currentGame.gameId),
+                    solanaGame.getActiveChallenges(currentGame.gameId),
+                ]);
 
                 setReceivedChallenges(pending);
                 setActiveChallenges(active);
-                setMyChallenges(mine);
             } catch (error) {
                 console.error('Error fetching Phase 2 data:', error);
             }
@@ -204,16 +296,81 @@ export default function Phase2() {
         return () => clearInterval(interval);
     }, [currentGame?.gameId, wallet.publicKey, solanaGame.program]);
 
-    const sendChallenge = async () => {
-        console.log('🎮 [sendChallenge] Starting:', {
-            selectedPlayer: selectedPlayer?.toBase58(),
-            challengeAmount,
-            selectedGameType,
-            currentGameId: currentGame?.gameId
-        });
+    // ✅ FIXED: Advance to Phase 3 with retry logic
+    const handleAdvanceToPhase3 = async () => {
+        if (!currentGame) {
+            toast.error('Game not found');
+            return;
+        }
 
+        setLoading(true);
+        setTransactionLoading(true);
+
+        try {
+            // Retry logic for advance phase
+            await retryTransaction(
+                () => solanaGame.advanceToPhase3(currentGame.gameId, (progress: any) => {
+                    console.log('Phase 3 advance progress:', progress);
+                    // ✅ FIX: Don't return the toast result
+                    toast.info(progress.step, {
+                        description: `Progress: ${progress.progress}%`,
+                    });
+                }),
+                'Advance to Phase 3'
+            );
+
+            toast.success('Advanced to Phase 3!', {
+                description: 'Game moved successfully to Phase 3. All eligible players can now mark READY.',
+            });
+
+            // Refresh games
+            await solanaGame.refreshGames();
+
+            // Refresh player state
+            if (wallet.publicKey) {
+                const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey);
+                if (playerData) {
+                    const normalizedPlayerState = {
+                        ...playerData,
+                        virtualBalance: playerData.virtualBalance / 1e9,
+                        totalEarned: playerData.totalEarned / 1e9,
+                        allocations: playerData.allocations
+                            ? {
+                                mining: playerData.allocations.mining / 1e9,
+                                farming: playerData.allocations.farming / 1e9,
+                                trading: playerData.allocations.trading / 1e9,
+                                research: playerData.allocations.research / 1e9,
+                                social: playerData.allocations.social / 1e9,
+                            }
+                            : {},
+                    };
+                    setPlayerState(normalizedPlayerState);
+                }
+            }
+
+            // Navigate to Phase 3 after delay
+            setTimeout(() => {
+                navigate(`/phase3?gameId=${currentGame.gameId}`);
+            }, 2000);
+        } catch (error: any) {
+            console.error('❌ Error advancing to Phase 3:', error);
+            toast.error('Advance Failed', {
+                description: error.message || 'Could not advance to Phase 3',
+            });
+        } finally {
+            setLoading(false);
+            setTransactionLoading(false);
+        }
+    };
+
+    const sendChallenge = async () => {
         if (!selectedPlayer || !challengeAmount || !selectedGameType) {
             toast.error('Please select player, amount, and game type');
+            return;
+        }
+
+        if (phaseExpired) {
+            toast.error('⏰ Phase 2 has ended - no more challenges allowed!');
             return;
         }
 
@@ -244,14 +401,17 @@ export default function Phase2() {
         }
 
         setLoading(true);
+        setTransactionLoading(true);
         try {
-            console.log('📤 Creating challenge with gameId:', currentGame.gameId);
-
-            await solanaGame.createChallenge(
-                currentGame.gameId,
-                selectedPlayer,
-                amount,
-                selectedGameType as MiniGameType
+            // ✅ Retry logic for create challenge
+            await retryTransaction(
+                () => solanaGame.createChallenge(
+                    currentGame.gameId,
+                    selectedPlayer,
+                    amount,
+                    selectedGameType as MiniGameType
+                ),
+                'Create Challenge'
             );
 
             toast.success('Challenge sent! 🎮');
@@ -267,15 +427,26 @@ export default function Phase2() {
             toast.error(error.message || 'Failed to send challenge');
         } finally {
             setLoading(false);
+            setTransactionLoading(false);
         }
     };
 
     const handleChallenge = async (challenge: Challenge, accept: boolean) => {
         if (currentGame?.gameId !== 0 && !currentGame?.gameId) return;
 
+        if (phaseExpired && accept) {
+            toast.error('⏰ Phase 2 has ended - cannot accept challenges!');
+            return;
+        }
+
         setLoading(true);
+        setTransactionLoading(true);
         try {
-            await solanaGame.respondToChallenge(challenge.publicKey, currentGame.gameId, accept);
+            // ✅ Retry logic for respond to challenge
+            await retryTransaction(
+                () => solanaGame.respondToChallenge(challenge.publicKey, currentGame.gameId, accept),
+                'Respond to Challenge'
+            );
 
             if (accept) {
                 toast.success('Challenge accepted! 🎯');
@@ -284,7 +455,10 @@ export default function Phase2() {
 
                 const updatedChallenge = active.find(c => c.publicKey.equals(challenge.publicKey));
                 if (updatedChallenge && checkStatus(updatedChallenge, 'Accepted')) {
-                    await solanaGame.markReady(updatedChallenge.publicKey);
+                    await retryTransaction(
+                        () => solanaGame.markReady(updatedChallenge.publicKey),
+                        'Mark Ready'
+                    );
                     toast.info('Marked as ready');
                 }
             } else {
@@ -300,15 +474,27 @@ export default function Phase2() {
             toast.error(error.message || 'Failed to respond');
         } finally {
             setLoading(false);
+            setTransactionLoading(false);
         }
     };
 
     const handleStartGame = async (challenge: Challenge) => {
         if (!wallet.publicKey) return;
 
+        if (phaseExpired) {
+            toast.error('⏰ Phase 2 has ended - cannot start new games!');
+            return;
+        }
+
         setLoading(true);
+        setTransactionLoading(true);
         try {
-            await solanaGame.startMiniGame(challenge.publicKey);
+            // ✅ Retry logic for start game
+            await retryTransaction(
+                () => solanaGame.startMiniGame(challenge.publicKey),
+                'Start Mini Game'
+            );
+
             toast.success('Game started! 🎮');
             setCurrentChallenge(challenge);
             setShowGameModal(true);
@@ -321,13 +507,20 @@ export default function Phase2() {
             }
         } finally {
             setLoading(false);
+            setTransactionLoading(false);
         }
     };
 
     const handleMarkReady = async (challenge: Challenge) => {
         setLoading(true);
+        setTransactionLoading(true);
         try {
-            await solanaGame.markReady(challenge.publicKey);
+            // ✅ Retry logic for mark ready
+            await retryTransaction(
+                () => solanaGame.markReady(challenge.publicKey),
+                'Mark Ready'
+            );
+
             toast.success('Marked as ready!');
             const active = await solanaGame.getActiveChallenges(currentGame.gameId);
             setActiveChallenges(active);
@@ -336,41 +529,77 @@ export default function Phase2() {
             toast.error(error.message || 'Failed');
         } finally {
             setLoading(false);
+            setTransactionLoading(false);
         }
     };
 
     const handleGameEnd = async (winner: PublicKey) => {
         if (!currentChallenge || (currentGame?.gameId !== 0 && !currentGame?.gameId)) return;
 
-        const loser = winner.equals(currentChallenge.challenger)
-            ? currentChallenge.opponent
-            : currentChallenge.challenger;
+        if (!winner.equals(wallet.publicKey!)) {
+            console.log('❌ You lost - no transaction needed');
+            toast.error('Better luck next time!');
 
-        try {
-            await solanaGame.claimMiniGameWin(
-                currentChallenge.publicKey,
-                currentGame.gameId,
-                winner,
-                loser
-            );
-
-            toast.success(winner.equals(wallet.publicKey!) ? '🎉 You won!' : 'Better luck next time!');
+            setShowGameModal(false);
+            setCurrentChallenge(null);
+            setLastGameCompletedTime(Date.now());
 
             const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey!);
             setPlayerState(playerData);
 
             const mine = await solanaGame.getMyChallenges(currentGame.gameId);
             setMyChallenges(mine);
+
+            lastFetchTimeRef.current = Date.now();
+            return;
+        }
+
+        const loser = winner.equals(currentChallenge.challenger)
+            ? currentChallenge.opponent
+            : currentChallenge.challenger;
+
+        setTransactionLoading(true);
+        try {
+            toast.info('🏆 Finalizing transaction...');
+
+            // ✅ Retry logic for claim win
+            await retryTransaction(
+                () => solanaGame.claimMiniGameWin(
+                    currentChallenge.publicKey,
+                    currentGame.gameId,
+                    winner,
+                    loser
+                ),
+                'Claim Mini Game Win'
+            );
+
+            toast.success('🎉 Victory! Rewards claimed!');
+
+            setShowGameModal(false);
+            setCurrentChallenge(null);
+            setLastGameCompletedTime(Date.now());
+
+            const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey!);
+            setPlayerState(playerData);
+
+            const mine = await solanaGame.getMyChallenges(currentGame.gameId);
+            setMyChallenges(mine);
+
             lastFetchTimeRef.current = Date.now();
         } catch (error: any) {
             toast.error(error.message || 'Failed to claim win');
+        } finally {
+            setTransactionLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-background relative overflow-hidden">
+        <div className="min-h-screen relative overflow-hidden">
             <ParticleBackground />
-            <Navbar />
+
+            <div className="relative z-20">
+                <Navbar />
+            </div>
 
             <div className="container mx-auto px-4 pt-24 pb-16 relative z-10">
                 <Button
@@ -389,16 +618,87 @@ export default function Phase2() {
                     <p className="text-xl md:text-2xl text-muted-foreground mb-6">
                         Challenge other players to skill-based mini-games
                     </p>
-                    {currentGame?.phaseEndTime && (
-                        <div className="inline-block">
-                            <CountdownTimer targetTime={new Date(currentGame.phaseEndTime)} />
-                        </div>
-                    )}
                 </div>
 
-                {/* Requirements Banner */}
+                {currentGame?.phaseEndTime && (
+                    <div className="mb-8">
+                        <PhaseCountdown targetTime={new Date(currentGame.phaseEndTime)} phaseName="Phase 2" />
+                    </div>
+                )}
+
+                {/* Advance to Phase 3 Card */}
+                {phaseExpired && (
+                    <Card className="mb-8 border-2 border-red-600 bg-gradient-to-r from-red-900/30 to-orange-900/30 backdrop-blur-md animate-pulse">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-2xl">
+                                <AlertTriangle className="w-6 h-6 text-red-400" />
+                                Phase 2 Has Ended!
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Alert className="bg-yellow-900/30 border-yellow-600">
+                                <Clock className="h-4 w-4" />
+                                <AlertTitle>⏰ Time's Up!</AlertTitle>
+                                <AlertDescription>
+                                    Phase 2 has ended. {timeUntilAdvance}
+                                    {!canAdvanceToPhase3 && !isCreator && (
+                                        <div className="mt-2 text-sm">
+                                            The creator can advance immediately, or anyone can advance after the 10-minute timeout.
+                                        </div>
+                                    )}
+                                </AlertDescription>
+                            </Alert>
+
+                            {canAdvanceToPhase3 && (
+                                <div className="space-y-3">
+                                    <Alert className="bg-red-900/30 border-red-600">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertTitle>⚠️ Important</AlertTitle>
+                                        <AlertDescription>
+                                            <ul className="list-disc list-inside space-y-1 text-sm mt-2">
+                                                <li>Players who didn't complete 80% of required games will lose 50% of their balance</li>
+                                                <li>All pending challenges will be cancelled</li>
+                                                <li>No more games can be started in Phase 2</li>
+                                            </ul>
+                                        </AlertDescription>
+                                    </Alert>
+
+                                    <Button
+                                        onClick={handleAdvanceToPhase3}
+                                        disabled={loading}
+                                        className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 py-6 text-xl font-bold shadow-lg shadow-red-600/50"
+                                        size="lg"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 className="w-6 h-6 mr-2 animate-spin" />
+                                                Advancing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ArrowRight className="w-6 h-6 mr-2" />
+                                                {isCreator ? 'Advance to Phase 3 (Creator)' : 'Advance to Phase 3'}
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            )}
+
+                            {!canAdvanceToPhase3 && (
+                                <div className="text-center py-4">
+                                    <Clock className="w-12 h-12 mx-auto mb-3 text-yellow-400 animate-spin" />
+                                    <p className="text-lg text-muted-foreground">
+                                        {timeUntilAdvance}
+                                    </p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Rest of the UI remains the same... */}
                 {gameRequirements && (
-                    <Card className="mb-8 border-2 border-sol-purple/30 bg-gradient-to-r from-sol-purple/10 to-sol-orange/10">
+                    <Card className="mb-8 border-2 border-sol-purple/30 bg-gradient-to-r from-sol-purple/10 to-sol-orange/10 backdrop-blur-md">
                         <CardContent className="p-6">
                             <div className="flex items-start gap-4">
                                 <Trophy className="w-8 h-8 text-sol-purple flex-shrink-0 mt-1" />
@@ -455,9 +755,8 @@ export default function Phase2() {
                     </Card>
                 )}
 
-                {/* Player Progress Card */}
                 {playerStats && gameRequirements && progressStatus && (
-                    <Card className={`mb-8 border-2 ${eligibilityStatus?.eligible
+                    <Card className={`mb-8 border-2 backdrop-blur-md ${eligibilityStatus?.eligible
                         ? 'border-green-500/50 bg-green-500/10'
                         : playerStats.participationRate! < 50
                             ? 'border-red-500/50 bg-red-500/10'
@@ -541,8 +840,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
-                {/* Player Stats */}
-                <Card className="mb-8 border-2 border-sol-orange/30 bg-gradient-to-br from-background to-accent/20">
+                <Card className="mb-8 border-2 border-sol-orange/30 bg-gradient-to-br from-background/80 to-accent/20 backdrop-blur-md">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-2xl">
                             <Trophy className="w-6 h-6 text-sol-orange" />
@@ -578,8 +876,7 @@ export default function Phase2() {
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                    {/* Send Challenge */}
-                    <Card className="border-2 border-sol-orange/30">
+                    <Card className="border-2 border-sol-orange/30 backdrop-blur-md bg-background/50">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">
                                 <Swords className="w-5 h-5 text-sol-orange" />
@@ -606,8 +903,8 @@ export default function Phase2() {
                                                 <button
                                                     key={idx}
                                                     onClick={() => canChallenge && setSelectedPlayer(player.publicKey)}
-                                                    disabled={!canChallenge}
-                                                    className={`w-full p-4 rounded-lg border-2 transition-all text-left relative ${!canChallenge
+                                                    disabled={!canChallenge || phaseExpired}
+                                                    className={`w-full p-4 rounded-lg border-2 transition-all text-left relative ${!canChallenge || phaseExpired
                                                         ? 'border-red-500/30 bg-red-500/5 opacity-50 cursor-not-allowed'
                                                         : isSelected
                                                             ? 'border-sol-orange bg-sol-orange/20 shadow-lg shadow-sol-orange/25 scale-[1.02]'
@@ -616,7 +913,7 @@ export default function Phase2() {
                                                 >
                                                     <div className="flex justify-between items-center">
                                                         <div className="flex items-center gap-3">
-                                                            {isSelected && canChallenge && (
+                                                            {isSelected && canChallenge && !phaseExpired && (
                                                                 <div className="w-6 h-6 rounded-full bg-sol-orange flex items-center justify-center flex-shrink-0">
                                                                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -637,10 +934,10 @@ export default function Phase2() {
                                                             <div className="text-xs text-muted-foreground">SOL</div>
                                                         </div>
                                                     </div>
-                                                    {!canChallenge && (
+                                                    {(!canChallenge || phaseExpired) && (
                                                         <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
                                                             <span className="text-xs font-semibold text-red-400">
-                                                                Max games reached
+                                                                {phaseExpired ? 'Phase ended' : 'Max games reached'}
                                                             </span>
                                                         </div>
                                                     )}
@@ -653,28 +950,34 @@ export default function Phase2() {
 
                             <div>
                                 <label className="block text-sm font-medium mb-3">Select Game Type</label>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 gap-3">
                                     {gameTypes.map((game) => {
                                         const isSelected = selectedGameType === game.id;
                                         return (
                                             <button
                                                 key={game.id}
                                                 onClick={() => setSelectedGameType(game.id)}
-                                                className={`p-4 rounded-lg border-2 transition-all relative group ${isSelected
-                                                    ? 'border-sol-orange bg-sol-orange/20 shadow-lg shadow-sol-orange/25 scale-[1.02]'
-                                                    : 'border-border/50 hover:border-sol-orange/50 hover:bg-accent/50'
+                                                disabled={phaseExpired}
+                                                className={`p-4 rounded-lg border-2 transition-all relative group ${phaseExpired ? 'opacity-50 cursor-not-allowed' :
+                                                    isSelected
+                                                        ? 'border-sol-orange bg-sol-orange/20 shadow-lg shadow-sol-orange/25 scale-[1.02]'
+                                                        : 'border-border/50 hover:border-sol-orange/50 hover:bg-accent/50'
                                                     }`}
                                             >
-                                                {isSelected && (
+                                                {isSelected && !phaseExpired && (
                                                     <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-sol-orange flex items-center justify-center">
                                                         <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                         </svg>
                                                     </div>
                                                 )}
-                                                <div className="text-4xl mb-2">{game.icon}</div>
-                                                <div className="text-xs font-medium mb-1">{game.name}</div>
-                                                <div className="text-xs text-muted-foreground">{game.description}</div>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-4xl">{game.icon}</div>
+                                                    <div className="flex-1">
+                                                        <div className="text-sm font-medium mb-1">{game.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{game.description}</div>
+                                                    </div>
+                                                </div>
                                             </button>
                                         );
                                     })}
@@ -688,7 +991,8 @@ export default function Phase2() {
                                         type="number"
                                         value={challengeAmount}
                                         onChange={(e) => setChallengeAmount(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-background border-2 border-border/50 focus:outline-none focus:ring-2 focus:ring-sol-orange focus:border-sol-orange transition-all text-lg font-mono"
+                                        disabled={phaseExpired}
+                                        className="w-full px-4 py-3 rounded-lg bg-background border-2 border-border/50 focus:outline-none focus:ring-2 focus:ring-sol-orange focus:border-sol-orange transition-all text-lg font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                                         placeholder="0.1"
                                         step="0.01"
                                         min="0.01"
@@ -707,16 +1011,8 @@ export default function Phase2() {
 
                             <Button
                                 variant="sol"
-                                onClick={() => {
-                                    console.log('🔴 Button click:', {
-                                        selectedPlayer: selectedPlayer?.toBase58(),
-                                        challengeAmount,
-                                        selectedGameType,
-                                        gameId: currentGame?.gameId
-                                    });
-                                    sendChallenge();
-                                }}
-                                disabled={!selectedPlayer || !challengeAmount || !selectedGameType || loading}
+                                onClick={sendChallenge}
+                                disabled={!selectedPlayer || !challengeAmount || !selectedGameType || loading || phaseExpired}
                                 className="w-full mt-2 h-12 text-base font-bold"
                             >
                                 {loading ? (
@@ -724,21 +1020,19 @@ export default function Phase2() {
                                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                                         Sending...
                                     </>
+                                ) : phaseExpired ? (
+                                    '⏰ Phase Ended'
                                 ) : (
                                     <>
                                         <Swords className="w-5 h-5 mr-2" />
                                         Send Challenge
-                                        <span className="ml-2 text-xs opacity-50">
-                                            ({selectedPlayer ? '✓' : '✗'} {challengeAmount ? '✓' : '✗'} {selectedGameType ? '✓' : '✗'})
-                                        </span>
                                     </>
                                 )}
                             </Button>
                         </CardContent>
                     </Card>
 
-                    {/* Received Challenges */}
-                    <Card className="border-2 border-green-400/30">
+                    <Card className="border-2 border-green-400/30 backdrop-blur-md bg-background/50">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">
                                 <Users className="w-5 h-5 text-green-400" />
@@ -785,10 +1079,10 @@ export default function Phase2() {
                                                         variant="sol"
                                                         size="sm"
                                                         onClick={() => handleChallenge(challenge, true)}
-                                                        disabled={loading}
+                                                        disabled={loading || phaseExpired}
                                                         className="flex-1"
                                                     >
-                                                        ✓ Accept
+                                                        {phaseExpired ? '⏰ Phase Ended' : '✓ Accept'}
                                                     </Button>
                                                     <Button
                                                         variant="outline"
@@ -809,9 +1103,8 @@ export default function Phase2() {
                     </Card>
                 </div>
 
-                {/* Active Challenges */}
                 {activeChallenges.length > 0 && (
-                    <Card className="mb-8 border-2 border-yellow-400/30 bg-yellow-400/5">
+                    <Card className="mb-8 border-2 border-yellow-400/30 bg-yellow-400/5 backdrop-blur-md">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">
                                 <Zap className="w-5 h-5 text-yellow-400" />
@@ -873,10 +1166,10 @@ export default function Phase2() {
                                                     variant="sol"
                                                     size="sm"
                                                     onClick={() => handleStartGame(challenge)}
-                                                    disabled={loading}
+                                                    disabled={loading || phaseExpired}
                                                     className="w-full animate-pulse"
                                                 >
-                                                    🎮 Start Game!
+                                                    {phaseExpired ? '⏰ Phase Ended' : '🎮 Start Game!'}
                                                 </Button>
                                             )}
 
@@ -901,8 +1194,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
-                {/* My Challenges */}
-                <Card className="border-2 border-sol-purple/30">
+                <Card className="border-2 border-sol-purple/30 backdrop-blur-md bg-background/50">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-xl">
                             <Coins className="w-5 h-5 text-sol-purple" />
@@ -949,18 +1241,8 @@ export default function Phase2() {
                 </Card>
             </div>
 
-            {/* Loading Overlay */}
-            {loading && (
-                <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                    <Card className="p-8">
-                        <Loader2 className="w-12 h-12 animate-spin text-sol-orange mx-auto mb-4" />
-                        <p className="text-center font-medium">Processing transaction...</p>
-                        <p className="text-center text-sm text-muted-foreground mt-2">Please wait...</p>
-                    </Card>
-                </div>
-            )}
+            <TransactionOverlay show={transactionLoading} message="Finalizing transaction..." />
 
-            {/* Game Modal */}
             {showGameModal && currentChallenge && wallet.publicKey && (
                 <GameModal
                     challengePDA={currentChallenge.publicKey}
@@ -978,7 +1260,6 @@ export default function Phase2() {
                 />
             )}
 
-            {/* Custom Scrollbar Styles */}
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 8px;

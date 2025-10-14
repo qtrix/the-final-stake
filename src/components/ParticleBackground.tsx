@@ -1,3 +1,5 @@
+// src/components/ParticleBackground.tsx - VERSIUNE FIXATĂ
+
 import { useEffect, useRef } from 'react';
 
 interface ParticleProps {
@@ -51,7 +53,7 @@ class GameParticle implements ParticleProps {
         const db = (this.x - b.x) ** 2 + (this.y - b.y) ** 2;
         return da - db;
       })
-      .slice(0, 3); // connect to 3 closest
+      .slice(0, 3);
 
     neighbors.forEach(particle => {
       const dx = this.x - particle.x;
@@ -62,7 +64,6 @@ class GameParticle implements ParticleProps {
         ctx.moveTo(this.x, this.y);
         ctx.lineTo(particle.x, particle.y);
 
-        // gradient line
         const gradient = ctx.createLinearGradient(this.x, this.y, particle.x, particle.y);
         gradient.addColorStop(0, "rgba(255, 94, 0, 0.3)");
         gradient.addColorStop(1, "rgba(106, 13, 173, 0.3)");
@@ -125,5 +126,11 @@ export default function ParticleBackground() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 -z-10 pointer-events-none" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none"
+      style={{ zIndex: 0 }} // ✅ Explicit z-index
+    />
+  );
 }

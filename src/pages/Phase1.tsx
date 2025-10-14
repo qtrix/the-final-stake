@@ -125,6 +125,12 @@ export default function Phase1() {
 
   // Find the game the player is in
   useEffect(() => {
+    // 👇 ADD: Only run this logic if we're on the Phase1 page
+    if (!window.location.pathname.includes('/phase1')) {
+      console.log('✅ Not on Phase1 page, skipping redirect logic');
+      return;
+    }
+
     if (!wallet.publicKey) {
       navigate('/lobby');
       return;

@@ -12,7 +12,7 @@ export default function Hero({ onNavigateToRegister }: HeroProps) {
     if (onNavigateToRegister) {
       onNavigateToRegister();
     } else {
-      navigate('/register');
+      navigate('/how-to-play');
     }
   };
 
@@ -101,7 +101,7 @@ export default function Hero({ onNavigateToRegister }: HeroProps) {
             onClick={handleEarlyAccess}
             className="rounded-full text-lg px-8 py-4"
           >
-            🎮 Join Waitlist
+            🎮  How to play
           </Button>
           <Button
             variant="sol-outline"

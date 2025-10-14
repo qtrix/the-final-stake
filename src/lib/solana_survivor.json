@@ -32,6 +32,30 @@
       "args": []
     },
     {
+      "name": "advance_to_phase3",
+      "discriminator": [
+        30,
+        37,
+        101,
+        169,
+        98,
+        129,
+        224,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "caller",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_mini_game_win",
       "discriminator": [
         153,
@@ -72,6 +96,31 @@
       ]
     },
     {
+      "name": "claim_phase3_prize",
+      "discriminator": [
+        254,
+        35,
+        196,
+        142,
+        109,
+        15,
+        86,
+        149
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "winner",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_phase_end_rewards",
       "discriminator": [
         103,
@@ -96,6 +145,31 @@
         },
         {
           "name": "player",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_platform_fee",
+      "discriminator": [
+        156,
+        39,
+        208,
+        135,
+        76,
+        237,
+        61,
+        72
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "writable": true,
           "signer": true
         }
       ],
@@ -567,6 +641,69 @@
       "args": []
     },
     {
+      "name": "mark_ready_phase3",
+      "discriminator": [
+        129,
+        102,
+        198,
+        241,
+        127,
+        242,
+        142,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "ready_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  104,
+                  97,
+                  115,
+                  101,
+                  51,
+                  95,
+                  114,
+                  101,
+                  97,
+                  100,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game.game_id",
+                "account": "Game"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "ready_for_game",
       "discriminator": [
         156,
@@ -674,6 +811,30 @@
       "args": []
     },
     {
+      "name": "start_phase3_game",
+      "discriminator": [
+        188,
+        130,
+        11,
+        17,
+        176,
+        93,
+        213,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "caller",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "submit_allocations",
       "discriminator": [
         167,
@@ -722,6 +883,35 @@
         {
           "name": "social",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "submit_phase3_winner",
+      "discriminator": [
+        166,
+        186,
+        64,
+        71,
+        0,
+        189,
+        87,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "submitter",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winner",
+          "type": "pubkey"
         }
       ]
     }
@@ -777,6 +967,19 @@
         163,
         9,
         71
+      ]
+    },
+    {
+      "name": "Phase3ReadyState",
+      "discriminator": [
+        51,
+        49,
+        224,
+        176,
+        84,
+        55,
+        52,
+        221
       ]
     },
     {
@@ -857,6 +1060,45 @@
         196,
         218,
         48
+      ]
+    },
+    {
+      "name": "Phase3PrizeClaimed",
+      "discriminator": [
+        2,
+        162,
+        35,
+        95,
+        22,
+        111,
+        8,
+        18
+      ]
+    },
+    {
+      "name": "Phase3PrizeRedistributed",
+      "discriminator": [
+        40,
+        225,
+        185,
+        204,
+        7,
+        21,
+        56,
+        39
+      ]
+    },
+    {
+      "name": "Phase3WinnerDeclared",
+      "discriminator": [
+        79,
+        76,
+        126,
+        15,
+        216,
+        115,
+        146,
+        137
       ]
     },
     {
@@ -1026,6 +1268,86 @@
       "code": 6027,
       "name": "Phase2RequirementNotMet",
       "msg": "Phase 2 requirement not met"
+    },
+    {
+      "code": 6028,
+      "name": "OnlyCreatorCanAdvanceEarly",
+      "msg": "Only creator can advance before 5 minutes"
+    },
+    {
+      "code": 6029,
+      "name": "Phase3AlreadyStarted",
+      "msg": "Phase 3 already started"
+    },
+    {
+      "code": 6030,
+      "name": "ReadyDeadlineExpired",
+      "msg": "Ready deadline expired"
+    },
+    {
+      "code": 6031,
+      "name": "ReadyPeriodNotExpired",
+      "msg": "Ready period not expired yet"
+    },
+    {
+      "code": 6032,
+      "name": "ReadyPlayerNotFound",
+      "msg": "Ready player not found"
+    },
+    {
+      "code": 6033,
+      "name": "NoFeeToCollect",
+      "msg": "No platform fee to collect"
+    },
+    {
+      "code": 6034,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6035,
+      "name": "Phase3NotStarted",
+      "msg": "Phase 3 not started"
+    },
+    {
+      "code": 6036,
+      "name": "WinnerAlreadyDeclared",
+      "msg": "Winner already declared"
+    },
+    {
+      "code": 6037,
+      "name": "NoWinnerDeclared",
+      "msg": "No winner declared"
+    },
+    {
+      "code": 6038,
+      "name": "NotWinner",
+      "msg": "Not the winner"
+    },
+    {
+      "code": 6039,
+      "name": "NoPrizeToCollect",
+      "msg": "No prize to collect"
+    },
+    {
+      "code": 6040,
+      "name": "GameNotCompleted",
+      "msg": "Game not completed"
+    },
+    {
+      "code": 6041,
+      "name": "AlreadyClaimed",
+      "msg": "Already claimed"
+    },
+    {
+      "code": 6042,
+      "name": "InvalidCalculation",
+      "msg": "Invalid calculation"
+    },
+    {
+      "code": 6043,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
     }
   ],
   "types": [
@@ -1226,6 +1548,10 @@
             "type": "u8"
           },
           {
+            "name": "phase_start_time",
+            "type": "i64"
+          },
+          {
             "name": "phase_end_time",
             "type": "i64"
           },
@@ -1248,6 +1574,32 @@
           {
             "name": "phase2_max_games_per_opponent",
             "type": "u8"
+          },
+          {
+            "name": "phase3_ready_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "phase3_extended_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "phase3_players_ready",
+            "type": "u8"
+          },
+          {
+            "name": "phase3_started",
+            "type": "bool"
+          },
+          {
+            "name": "phase3_winner",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "platform_fee_collected",
+            "type": "u64"
           }
         ]
       }
@@ -1486,6 +1838,94 @@
       }
     },
     {
+      "name": "Phase3PrizeClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase3PrizeRedistributed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase3ReadyState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "ready",
+            "type": "bool"
+          },
+          {
+            "name": "marked_ready_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase3WinnerDeclared",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "prize_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "PhaseAdvanced",
       "type": {
         "kind": "struct",
@@ -1586,6 +2026,10 @@
           },
           {
             "name": "phase2_penalty_applied",
+            "type": "bool"
+          },
+          {
+            "name": "phase3_prize_claimed",
             "type": "bool"
           }
         ]

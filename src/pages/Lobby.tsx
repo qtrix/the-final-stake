@@ -978,7 +978,12 @@ export default function Lobby() {
                             className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
                             onClick={(e) => {
                               e.stopPropagation();
-                              const targetPhase = game.currentPhase === 2 ? 'phase2' : 'phase1';
+
+                              // 🔥 Include toate fazele
+                              let targetPhase = 'phase1';
+                              if (game.currentPhase === 2) targetPhase = 'phase2';
+                              else if (game.currentPhase === 3) targetPhase = 'phase3';
+
                               console.log(`🎮 Navigating to ${targetPhase} for gameId:`, game.gameId);
                               navigate(`/${targetPhase}?gameId=${game.gameId}`);
                             }}
@@ -1130,12 +1135,12 @@ export default function Lobby() {
                       color: 'white'
                     }}
                   >
-                    <option value={1}>1 oră (12/18/30 min fazele)</option>
-                    <option value={2}>2 ore (24/36/60 min fazele)</option>
-                    <option value={3}>3 ore (36/54/90 min fazele)</option>
-                    <option value={5}>5 ore (60/90/150 min fazele)</option>
-                    <option value={8}>8 ore (96/144/240 min fazele)</option>
-                    <option value={24}>24 ore (288/432/720 min fazele)</option>
+                    <option value={1}>1 oră (12/18/30 min phase)</option>
+                    <option value={2}>2 ore (24/36/60 min phase)</option>
+                    <option value={3}>3 ore (36/54/90 min phase)</option>
+                    <option value={5}>5 ore (60/90/150 min phase)</option>
+                    <option value={8}>8 ore (96/144/240 min phase)</option>
+                    <option value={24}>24 ore (288/432/720 min phase)</option>
                   </select>
                 </div>
                 <div>

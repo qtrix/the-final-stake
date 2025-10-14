@@ -5,6 +5,8 @@ import { Program, AnchorProvider, web3, BN } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import solanaIdl from '../lib/solana_survivor.json';
 import bs58 from 'bs58';
+import { rpcCache } from '@/lib/rpcCache'
+import { toast } from 'sonner';
 
 // ✅ UPDATED PROGRAM ID - deployed contract
 const PROGRAM_ID = new PublicKey('AU3td9Pd4mU5XTn8fQUwKjZZhMsizEpQNjtbMBbfvJvi');
@@ -35,6 +37,14 @@ export interface Game {
   // ✅ NEW: Phase 2 requirements calculated by contract
   phase2RequiredGames: number;
   phase2MaxGamesPerOpponent: number;
+
+  // Phase 3 fields
+  phase3ReadyDeadline: Date;
+  phase3ExtendedDeadline: Date | null;
+  phase3PlayersReady: number;
+  phase3Started: boolean;
+  phase3Winner: string | null;
+  platformFeeCollected: number;
 }
 
 export interface GameEvent {
@@ -120,6 +130,23 @@ export interface PhaseAdvanceProgress {
   progress: number;
   current?: number;
   total?: number;
+}
+
+export interface Phase3ReadyState {
+  gameId: number;
+  player: string;
+  ready: boolean;
+  markedReadyAt: Date;
+}
+
+export interface Phase3GameState {
+  readyDeadline: Date;
+  extendedDeadline: Date | null;
+  playersReady: number;
+  totalPlayers: number;
+  started: boolean;
+  winner: string | null;
+  platformFeeCollected: number;
 }
 
 // PDA Derivation Functions - these must match the contract exactly
@@ -288,9 +315,22 @@ export function useSolanaGame() {
             phase3Duration: g.phases?.phase3Duration?.toNumber() || 0,
           },
           txSignature: acc.publicKey.toBase58(),
-          // ✅ Read Phase 2 requirements from contract
           phase2RequiredGames: g.phase2RequiredGames || 5,
           phase2MaxGamesPerOpponent: g.phase2MaxGamesPerOpponent || 3,
+
+          // ✅ Phase 3 fields with proper validation
+          phase3ReadyDeadline: g.phase3ReadyDeadline && g.phase3ReadyDeadline.toNumber() > 0
+            ? new Date(g.phase3ReadyDeadline.toNumber() * 1000)
+            : new Date(Date.now() + 30 * 60 * 1000), // Default +30min
+
+          phase3ExtendedDeadline: g.phase3ExtendedDeadline && g.phase3ExtendedDeadline.toNumber() > 0
+            ? new Date(g.phase3ExtendedDeadline.toNumber() * 1000)
+            : null,
+
+          phase3PlayersReady: g.phase3PlayersReady || 0,
+          phase3Started: g.phase3Started || false,
+          phase3Winner: g.phase3Winner ? g.phase3Winner.toBase58() : null,
+          platformFeeCollected: g.platformFeeCollected?.toNumber() || 0,
         };
       });
 
@@ -999,6 +1039,8 @@ export function useSolanaGame() {
       .rpc();
 
     console.log('✅ Challenge created! TX:', tx);
+    rpcCache.invalidate(`pending_challenges_${gameId}_${opponent.toBase58()}`);
+    rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
     return tx;
   };
 
@@ -1025,6 +1067,8 @@ export function useSolanaGame() {
       .rpc();
 
     console.log(`✅ Challenge ${accept ? 'accepted' : 'declined'}! TX:`, tx);
+    rpcCache.invalidate(`pending_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+    rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
     return tx;
   };
 
@@ -1088,158 +1132,450 @@ export function useSolanaGame() {
       .rpc();
 
     console.log('✅ Win claimed! TX:', tx);
+    rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+    rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+    rpcCache.invalidate(`player_stats_${gameId}_${wallet.publicKey!.toBase58()}`);
     return tx;
   };
 
   const getPendingChallenges = async (gameId: number): Promise<Challenge[]> => {
     if (!program || !wallet.publicKey) return [];
 
-    try {
-      const challenges = await (program.account as any).challenge.all([
-        {
-          memcmp: {
-            offset: 8 + 8, // discriminator + challenge_id
-            bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
-          }
+    const cacheKey = `pending_challenges_${gameId}_${wallet.publicKey.toBase58()}`;
+
+    return rpcCache.get(
+      cacheKey,
+      async () => {
+        try {
+          const challenges = await (program.account as any).challenge.all([
+            {
+              memcmp: {
+                offset: 8 + 8,
+                bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
+              }
+            }
+          ]);
+
+          return challenges
+            .filter((c: any) =>
+              c.account.opponent.equals(wallet.publicKey) &&
+              c.account.status.pending
+            )
+            .map((c: any) => ({
+              publicKey: c.publicKey,
+              challengeId: c.account.challengeId.toNumber(),
+              gameId: c.account.gameId.toNumber(),
+              challenger: c.account.challenger,
+              opponent: c.account.opponent,
+              betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
+              gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
+              status: Object.keys(c.account.status)[0] as ChallengeStatus,
+              createdAt: new Date(c.account.createdAt.toNumber() * 1000),
+              acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
+              gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
+              winner: c.account.winner,
+              opponentDeclineCount: c.account.opponentDeclineCount,
+            }));
+        } catch (error) {
+          console.error('Error fetching pending challenges:', error);
+          return [];
         }
-      ]);
-
-      return challenges
-        .filter((c: any) =>
-          c.account.opponent.equals(wallet.publicKey) &&
-          c.account.status.pending
-        )
-        .map((c: any) => ({
-          publicKey: c.publicKey,
-          challengeId: c.account.challengeId.toNumber(),
-          gameId: c.account.gameId.toNumber(),
-          challenger: c.account.challenger,
-          opponent: c.account.opponent,
-          betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
-          gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
-          status: Object.keys(c.account.status)[0] as ChallengeStatus,
-          createdAt: new Date(c.account.createdAt.toNumber() * 1000),
-          acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
-          gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
-          winner: c.account.winner,
-          opponentDeclineCount: c.account.opponentDeclineCount,
-        }));
-    } catch (error) {
-      console.error('Error fetching pending challenges:', error);
-      return [];
-    }
-  };
-
-  const getActiveChallenges = async (gameId: number): Promise<Challenge[]> => {
-    if (!program || !wallet.publicKey) return [];
-
-    try {
-      const challenges = await (program.account as any).challenge.all([
-        {
-          memcmp: {
-            offset: 8 + 8,
-            bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
-          }
-        }
-      ]);
-
-      return challenges
-        .filter((c: any) =>
-          (c.account.challenger.equals(wallet.publicKey) || c.account.opponent.equals(wallet.publicKey)) &&
-          (c.account.status.accepted || c.account.status.bothReady || c.account.status.inProgress)
-        )
-        .map((c: any) => ({
-          publicKey: c.publicKey,
-          challengeId: c.account.challengeId.toNumber(),
-          gameId: c.account.gameId.toNumber(),
-          challenger: c.account.challenger,
-          opponent: c.account.opponent,
-          betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
-          gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
-          status: Object.keys(c.account.status)[0] as ChallengeStatus,
-          createdAt: new Date(c.account.createdAt.toNumber() * 1000),
-          acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
-          gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
-          winner: c.account.winner,
-          opponentDeclineCount: c.account.opponentDeclineCount,
-        }));
-    } catch (error) {
-      console.error('Error fetching active challenges:', error);
-      return [];
-    }
+      },
+      15000 // Cache 20 secunde
+    );
   };
 
   const getMyChallenges = async (gameId: number): Promise<Challenge[]> => {
     if (!program || !wallet.publicKey) return [];
 
-    try {
-      const challenges = await (program.account as any).challenge.all([
-        {
-          memcmp: {
-            offset: 8 + 8,
-            bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
-          }
-        }
-      ]);
+    const cacheKey = `my_challenges_${gameId}_${wallet.publicKey.toBase58()}`;
 
-      return challenges
-        .filter((c: any) => c.account.challenger.equals(wallet.publicKey))
-        .map((c: any) => ({
-          publicKey: c.publicKey,
-          challengeId: c.account.challengeId.toNumber(),
-          gameId: c.account.gameId.toNumber(),
-          challenger: c.account.challenger,
-          opponent: c.account.opponent,
-          betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
-          gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
-          status: Object.keys(c.account.status)[0] as ChallengeStatus,
-          createdAt: new Date(c.account.createdAt.toNumber() * 1000),
-          acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
-          gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
-          winner: c.account.winner,
-          opponentDeclineCount: c.account.opponentDeclineCount,
-        }));
-    } catch (error) {
-      console.error('Error fetching my challenges:', error);
-      return [];
-    }
+    return rpcCache.get(
+      cacheKey,
+      async () => {
+        try {
+          const challenges = await (program.account as any).challenge.all([
+            {
+              memcmp: {
+                offset: 8 + 8,
+                bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
+              }
+            }
+          ]);
+
+          return challenges
+            .filter((c: any) => c.account.challenger.equals(wallet.publicKey))
+            .map((c: any) => ({
+              publicKey: c.publicKey,
+              challengeId: c.account.challengeId.toNumber(),
+              gameId: c.account.gameId.toNumber(),
+              challenger: c.account.challenger,
+              opponent: c.account.opponent,
+              betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
+              gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
+              status: Object.keys(c.account.status)[0] as ChallengeStatus,
+              createdAt: new Date(c.account.createdAt.toNumber() * 1000),
+              acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
+              gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
+              winner: c.account.winner,
+              opponentDeclineCount: c.account.opponentDeclineCount,
+            }));
+        } catch (error) {
+          console.error('Error fetching my challenges:', error);
+          return [];
+        }
+      },
+      12000
+    );
   };
 
   // Fetch game events from the contract
   const getGameEvents = async (gameId: number): Promise<GameEvent[]> => {
     if (!program) return [];
 
+    const cacheKey = `game_events_${gameId}`;
+
+    return rpcCache.get(
+      cacheKey,
+      async () => {
+        try {
+          const [gamePDA] = getGamePDA(program.programId, gameId);
+          const game = await (program.account as any).game.fetch(gamePDA);
+
+          const events: GameEvent[] = [];
+
+          if (game.events && Array.isArray(game.events)) {
+            game.events.forEach((event: any) => {
+              const eventType = Object.keys(event.eventType)[0];
+              const poolAffected = Object.keys(event.poolAffected)[0];
+
+              const mappedEvent: GameEvent = {
+                eventType: eventType as GameEvent['eventType'],
+                poolAffected: poolAffected as GameEvent['poolAffected'],
+                timestamp: new Date(event.timestamp.toNumber() * 1000),
+                phaseNumber: event.phaseNumber,
+                newValue: event.newValue?.toNumber(),
+                multiplier: event.multiplier?.toNumber(),
+                participant: event.participant || undefined,
+              };
+
+              events.push(mappedEvent);
+            });
+          }
+
+          return events;
+        } catch (error) {
+          console.error('Error fetching game events:', error);
+          return [];
+        }
+      },
+      15000 // Events se schimbă mai rar, cache 30s
+    );
+  };
+  const getActiveChallenges = async (gameId: number): Promise<Challenge[]> => {
+    if (!program || !wallet.publicKey) return [];
+
+    const cacheKey = `active_challenges_${gameId}_${wallet.publicKey.toBase58()}`;
+
+    return rpcCache.get(
+      cacheKey,
+      async () => {
+        try {
+          const challenges = await (program.account as any).challenge.all([
+            {
+              memcmp: {
+                offset: 8 + 8,
+                bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
+              }
+            }
+          ]);
+
+          return challenges
+            .filter((c: any) =>
+              (c.account.challenger.equals(wallet.publicKey) || c.account.opponent.equals(wallet.publicKey)) &&
+              (c.account.status.accepted || c.account.status.bothReady || c.account.status.inProgress)
+            )
+            .map((c: any) => ({
+              publicKey: c.publicKey,
+              challengeId: c.account.challengeId.toNumber(),
+              gameId: c.account.gameId.toNumber(),
+              challenger: c.account.challenger,
+              opponent: c.account.opponent,
+              betAmount: c.account.betAmount.toNumber() / LAMPORTS_PER_SOL,
+              gameType: Object.keys(c.account.gameType)[0] as MiniGameType,
+              status: Object.keys(c.account.status)[0] as ChallengeStatus,
+              createdAt: new Date(c.account.createdAt.toNumber() * 1000),
+              acceptedAt: c.account.acceptedAt ? new Date(c.account.acceptedAt.toNumber() * 1000) : null,
+              gameStartedAt: c.account.gameStartedAt ? new Date(c.account.gameStartedAt.toNumber() * 1000) : null,
+              winner: c.account.winner,
+              opponentDeclineCount: c.account.opponentDeclineCount,
+            }));
+        } catch (error) {
+          console.error('Error fetching active challenges:', error);
+          return [];
+        }
+      },
+      10000
+    );
+  };
+
+  /**
+ * Advance game from Phase 2 to Phase 3
+ * Creator can advance anytime after phase ends, others after 5 min timeout
+ */
+  const advanceToPhase3 = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
     try {
       const [gamePDA] = getGamePDA(program.programId, gameId);
-      const game = await (program.account as any).game.fetch(gamePDA);
 
-      const events: GameEvent[] = [];
+      const tx = await program.methods
+        .advanceToPhase3()
+        .accounts({
+          game: gamePDA,
+          caller: wallet.publicKey,
+        })
+        .rpc();
 
-      if (game.events && Array.isArray(game.events)) {
-        game.events.forEach((event: any) => {
-          const eventType = Object.keys(event.eventType)[0];
-          const poolAffected = Object.keys(event.poolAffected)[0];
+      console.log('✅ Advanced to Phase 3! TX:', tx);
+      toast.success('🎮 Phase 3 Started! 30min to mark READY');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error advancing to Phase 3:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          const mappedEvent: GameEvent = {
-            eventType: eventType as GameEvent['eventType'],
-            poolAffected: poolAffected as GameEvent['poolAffected'],
-            timestamp: new Date(event.timestamp.toNumber() * 1000),
-            phaseNumber: event.phaseNumber,
-            newValue: event.newValue?.toNumber(),
-            multiplier: event.multiplier?.toNumber(),
-            participant: event.participant || undefined,
-          };
+  /**
+   * Mark player as ready for Phase 3
+   * Must be done within 30 minutes (or extended deadline)
+   */
+  const markReadyPhase3 = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
 
-          events.push(mappedEvent);
-        });
-      }
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [readyStatePDA] = getPhase3ReadyStatePDA(
+        program.programId,
+        gameId,
+        wallet.publicKey
+      );
 
-      return events;
+      const tx = await program.methods
+        .markReadyPhase3()
+        .accounts({
+          game: gamePDA,
+          readyState: readyStatePDA,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log('✅ Marked ready for Phase 3! TX:', tx);
+      toast.success('Marked as READY! ✓');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error marking ready:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+  const submitPhase3Winner = async (gameId: number, winner: PublicKey) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+
+      const tx = await program.methods
+        .submitPhase3Winner(winner)
+        .accounts({
+          game: gamePDA,
+          submitter: wallet.publicKey,
+        })
+        .rpc();
+
+      console.log('✅ Phase 3 winner submitted! TX:', tx);
+      toast.success('🏆 Winner declared on-chain!');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error submitting winner:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ NEW: Claim Phase 3 prize (winner only)
+  const claimPhase3Prize = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+
+      const tx = await program.methods
+        .claimPhase3Prize()
+        .accounts({
+          game: gamePDA,
+          winner: wallet.publicKey,
+        })
+        .rpc();
+
+      console.log('✅ Phase 3 prize claimed! TX:', tx);
+      toast.success('💰 Prize claimed successfully!');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error claiming prize:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+  /**
+   * Start Phase 3 game after ready period expires
+   * Handles 3 scenarios:
+   * - 0 ready: extend +1h (first time) or redistribute (second time)
+   * - 1 ready: auto winner
+   * - 2+ ready: start game
+   */
+  const startPhase3Game = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+
+      // Fetch all ready states to pass as remaining accounts
+      const readyStates = await getPhase3ReadyStates(gameId);
+      const remainingAccounts = readyStates.map(state => ({
+        pubkey: getPhase3ReadyStatePDA(
+          program.programId,
+          gameId,
+          new PublicKey(state.player)
+        )[0],
+        isSigner: false,
+        isWritable: false,
+      }));
+
+      const tx = await program.methods
+        .startPhase3Game()
+        .accounts({
+          game: gamePDA,
+          caller: wallet.publicKey,
+        })
+        .remainingAccounts(remainingAccounts)
+        .rpc();
+
+      console.log('✅ Phase 3 game started! TX:', tx);
+      toast.success('🎮 THE PURGE BEGINS!');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error starting Phase 3:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Fetch all Phase 3 ready states for a game
+   */
+  const getPhase3ReadyStates = async (gameId: number): Promise<Phase3ReadyState[]> => {
+    if (!program) return [];
+
+    try {
+      const allReadyStates = await program.account.phase3ReadyState.all([
+        {
+          memcmp: {
+            offset: 8, // Skip discriminator
+            bytes: bs58.encode(new BN(gameId).toArrayLike(Buffer, "le", 8)),
+          }
+        }
+      ]);
+
+      return allReadyStates.map((state: any) => ({
+        gameId: state.account.gameId.toNumber(),
+        player: state.account.player.toBase58(),
+        ready: state.account.ready,
+        markedReadyAt: new Date(state.account.markedReadyAt.toNumber() * 1000),
+      }));
     } catch (error) {
-      console.error('Error fetching game events:', error);
+      console.error('Error fetching Phase 3 ready states:', error);
       return [];
     }
   };
+
+  /**
+   * Get Phase 3 PDA for a specific player
+   */
+  const getPhase3ReadyStatePDA = (
+    programId: PublicKey,
+    gameId: number,
+    player: PublicKey
+  ): [PublicKey, number] => {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('phase3_ready'),
+        new BN(gameId).toArrayLike(Buffer, 'le', 8),
+        player.toBuffer(),
+      ],
+      programId
+    );
+  };
+
+  /**
+   * Claim platform fee (admin only)
+   */
+  const claimPlatformFee = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+
+      const tx = await program.methods
+        .claimPlatformFee()
+        .accounts({
+          game: gamePDA,
+          admin: wallet.publicKey,
+        })
+        .rpc();
+
+      console.log('✅ Platform fee claimed! TX:', tx);
+      toast.success('💰 Fee claimed!');
+      await fetchGames(program);
+      return tx;
+    } catch (error: any) {
+      console.error('❌ Error claiming fee:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   return {
     program,
@@ -1272,5 +1608,12 @@ export function useSolanaGame() {
     getMyChallenges,
     getGameEvents,
     getPlayerPhase2Stats, // ✅ NEW
+    advanceToPhase3,
+    markReadyPhase3,
+    startPhase3Game,
+    getPhase3ReadyStates,
+    claimPlatformFee,
+    submitPhase3Winner,
+    claimPhase3Prize,
   };
 }
