@@ -217,9 +217,9 @@ export default function RockPaperScissorsGame({
         <div className="space-y-6">
             {/* Connection Status */}
             <Card className={`${battleStatus === 'connecting' ? 'bg-blue-500/10 border-blue-500/30' :
-                    battleStatus === 'waiting_for_opponent' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                        battleStatus === 'error' ? 'bg-red-500/10 border-red-500/30' :
-                            'bg-green-500/10 border-green-500/30'
+                battleStatus === 'waiting_for_opponent' ? 'bg-yellow-500/10 border-yellow-500/30' :
+                    battleStatus === 'error' ? 'bg-red-500/10 border-red-500/30' :
+                        'bg-green-500/10 border-green-500/30'
                 }`}>
                 <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -324,8 +324,8 @@ export default function RockPaperScissorsGame({
             {/* Result display - shown when both moves received */}
             {lastRound && lastRound.opponentMove && lastRound.playerMove && gameState.gameStatus === 'playing' && (
                 <Card className={`border-2 ${lastRound.result === 'win' ? 'bg-green-500/20 border-green-500' :
-                        lastRound.result === 'lose' ? 'bg-red-500/20 border-red-500' :
-                            'bg-yellow-500/20 border-yellow-500'
+                    lastRound.result === 'lose' ? 'bg-red-500/20 border-red-500' :
+                        'bg-yellow-500/20 border-yellow-500'
                     } animate-in fade-in zoom-in duration-500`}>
                     <CardContent className="p-8 text-center">
                         <div className="text-6xl mb-4">
@@ -426,8 +426,8 @@ export default function RockPaperScissorsGame({
                                 <div
                                     key={round.roundNumber}
                                     className={`flex items-center justify-between p-3 rounded-lg ${round.result === 'win' ? 'bg-green-500/10' :
-                                            round.result === 'lose' ? 'bg-red-500/10' :
-                                                'bg-yellow-500/10'
+                                        round.result === 'lose' ? 'bg-red-500/10' :
+                                            'bg-yellow-500/10'
                                         }`}
                                 >
                                     <span className="text-sm text-muted-foreground">Round {round.roundNumber}</span>

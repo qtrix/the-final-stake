@@ -1,4 +1,5 @@
-// src/pages/Phase3.tsx - Complete Phase 3 Page
+// src/pages/Phase3.tsx - Complete Phase 3 Page with Auto-Start and Force Redirect
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PublicKey } from '@solana/web3.js';
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
     Clock, Users, Trophy, AlertCircle, CheckCircle, Loader2,
-    Target, Zap, Coins, UserX, Wallet
+    Target, Zap, Coins, UserX, Wallet, Wifi, WifiOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -18,19 +19,20 @@ import ParticleBackground from '@/components/ParticleBackground';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import PurgeGameMultiplayer from '@/pages/PurgeGameMultiplayer';
+import { wsManager } from '@/utils/websocketManager';
 
 const retryTransaction = async <T,>(
     operation: () => Promise<T>,
     operationName: string,
-    maxRetries: number = 3
+    maxRetries: number = 1
 ): Promise<T> => {
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`🔄 [${operationName}] Attempt ${attempt}/${maxRetries}`);
+            console.log(`[Retry] ${operationName} - Attempt ${attempt}/${maxRetries}`);
             const result = await operation();
-            console.log(`✅ [${operationName}] Success on attempt ${attempt}`);
+            console.log(`[Retry] ${operationName} - Success`);
             return result;
         } catch (error: any) {
             lastError = error;
@@ -42,15 +44,13 @@ const retryTransaction = async <T,>(
                 errorMessage.includes('block height exceeded') ||
                 errorMessage.includes('Transaction simulation failed');
 
-            console.error(`❌ [${operationName}] Attempt ${attempt} failed:`, errorMessage);
+            console.error(`[Retry] ${operationName} - Attempt ${attempt} failed:`, errorMessage);
 
             if (!isRetryable || attempt === maxRetries) {
-                console.error(`❌ [${operationName}] Non-retryable error or max retries reached`);
                 throw error;
             }
 
             const delay = Math.pow(2, attempt - 1) * 1000;
-            console.log(`⏳ [${operationName}] Waiting ${delay}ms before retry...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
@@ -81,26 +81,147 @@ const Phase3 = () => {
     const [isInitializing, setIsInitializing] = useState(true);
     const [showBattleGame, setShowBattleGame] = useState(false);
     const [redirecting, setRedirecting] = useState(false);
+    const [wsConnected, setWsConnected] = useState(false);
+    const [serverGamePhase, setServerGamePhase] = useState<'waiting' | 'countdown' | 'active' | 'ended'>('waiting');
 
     const [totalMiniGamesPlayed, setTotalMiniGamesPlayed] = useState(0);
     const [totalEliminated, setTotalEliminated] = useState(0);
     const [totalPrizePool, setTotalPrizePool] = useState(0);
     const [totalVirtualBalance, setTotalVirtualBalance] = useState(0);
+    const [hasTriggeredAutoStart, setHasTriggeredAutoStart] = useState(false);
 
     const isFetchingReadyStates = useRef(false);
-    const hasTriedAutoAdvance = useRef(false);
+    const autoStartTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // ============================================
+    // WEBSOCKET CONNECTION
+    // ============================================
+    useEffect(() => {
+        if (!wallet.publicKey || !gameId) return;
 
+        const playerId = wallet.publicKey.toBase58();
 
+        console.log('[Phase3] Connecting to WebSocket...');
+
+        const handlersId = `phase3-${Date.now()}`;
+
+        wsManager.connect(gameId, playerId, handlersId, {
+            onConnected: () => {
+                console.log('[Phase3] WebSocket connected');
+                setWsConnected(true);
+                toast.success('Connected to game server');
+            },
+            onDisconnected: () => {
+                console.log('[Phase3] WebSocket disconnected');
+                setWsConnected(false);
+            },
+            onGamePhaseChange: (phase) => {
+                console.log('[Phase3] Server game phase:', phase);
+                setServerGamePhase(phase);
+
+                if (phase === 'countdown') {
+                    toast.info('⚔️ Battle countdown started!', { duration: 3000 });
+                    setRedirecting(true);
+                    setTimeout(() => {
+                        setShowBattleGame(true);
+                        setRedirecting(false);
+                    }, 1000);
+                } else if (phase === 'active') {
+                    if (!showBattleGame) {
+                        setShowBattleGame(true);
+                    }
+                }
+            }
+        });
+
+        return () => {
+            console.log('[Phase3] Unregistering WebSocket handlers');
+            wsManager.unregisterHandler(handlersId);
+        };
+    }, [wallet.publicKey, gameId]);
+
+    // ============================================
+    // DEADLINE MONITORING & AUTO-START ON DEADLINE
+    // ============================================
+    useEffect(() => {
+        if (!currentGame || currentGame.currentPhase !== 3) return;
+        if (!wsConnected) return;
+
+        const checkDeadline = () => {
+            const now = Date.now();
+            let deadline: Date | null = null;
+
+            const parseDeadline = (dl: any): Date | null => {
+                if (!dl) return null;
+                try {
+                    let date: Date;
+                    if (dl instanceof Date) {
+                        date = dl;
+                    } else if (typeof dl === 'number') {
+                        date = new Date(dl);
+                    } else if (typeof dl === 'string') {
+                        date = new Date(dl);
+                    } else {
+                        date = new Date(dl);
+                    }
+                    if (isNaN(date.getTime())) return null;
+                    if (date.getTime() < new Date('2020-01-01').getTime()) return null;
+                    return date;
+                } catch (error) {
+                    return null;
+                }
+            };
+
+            const extendedDeadline = parseDeadline(currentGame.phase3ExtendedDeadline);
+            const readyDeadline = parseDeadline(currentGame.phase3ReadyDeadline);
+
+            if (extendedDeadline && extendedDeadline.getTime() > now) {
+                deadline = extendedDeadline;
+            } else if (readyDeadline && readyDeadline.getTime() > now) {
+                deadline = readyDeadline;
+            }
+
+            if (deadline) {
+                wsManager.send({
+                    type: 'set_deadline',
+                    gameId: currentGame.gameId,
+                    deadline: deadline.getTime()
+                });
+
+                const timeUntilDeadline = deadline.getTime() - now;
+
+                if (timeUntilDeadline > 0 && timeUntilDeadline <= 2000) {
+                    const readyCount = readyStates.filter(s => s.ready).length;
+
+                    if (readyCount >= 2 && !currentGame.phase3Started) {
+                        console.log('[Phase3] ⏰ Deadline expired - Auto-starting game');
+
+                        setTimeout(() => {
+                            if (startPhase3Game) {
+                                handleStartGame();
+                            }
+                        }, timeUntilDeadline + 100);
+                    }
+                }
+            }
+        };
+
+        checkDeadline();
+        const interval = setInterval(checkDeadline, 1000);
+
+        return () => clearInterval(interval);
+    }, [currentGame, wsConnected, readyStates, startPhase3Game]);
+
+    // ============================================
+    // PROGRAM & WALLET INITIALIZATION
+    // ============================================
     useEffect(() => {
         if (!program) {
-            console.log('⏳ Waiting for program to initialize...');
             setIsInitializing(true);
             return;
         }
 
         if (wallet.connecting) {
-            console.log('⏳ Wallet is connecting...');
             setIsInitializing(true);
             return;
         }
@@ -108,7 +229,6 @@ const Phase3 = () => {
         setIsInitializing(false);
 
         if (!wallet.publicKey) {
-            console.log('⚠️ Wallet not connected, redirecting to home');
             navigate('/');
             return;
         }
@@ -123,74 +243,32 @@ const Phase3 = () => {
         }
 
         const parsedGameId = parseInt(gameIdParam);
-        console.log('✅ Setting gameId:', parsedGameId);
         setGameId(parsedGameId);
     }, [program, wallet.connecting, wallet.publicKey, navigate]);
 
+    // ============================================
+    // FIND CURRENT GAME
+    // ============================================
     useEffect(() => {
-        if (gameId === null || !games || games.length === 0) {
-            console.log('⏳ Waiting for games...');
-            return;
-        }
+        if (gameId === null || !games || games.length === 0) return;
 
         const game = games.find(g => g.gameId === gameId);
         if (game) {
-            console.log('✅ Game found:', game.gameId, 'Phase:', game.currentPhase);
-            console.log('📊 Full Game data:', game);
             setCurrentGame(game);
 
             if (game.currentPhase !== 3) {
-                console.log('⚠️ Game is not in Phase 3');
                 toast.info(`Game is in Phase ${game.currentPhase}, not Phase 3`);
                 navigate('/lobby');
             }
         } else {
-            console.log('❌ Game not found:', gameId);
             toast.error(`Game ${gameId} not found`);
             navigate('/lobby');
         }
     }, [gameId, games, navigate]);
 
-    useEffect(() => {
-        console.log('🔍 Checking phase3 status:', {
-            hasCurrentGame: !!currentGame,
-            showingBattle: showBattleGame,
-            phase3Started: currentGame?.phase3Started,
-            readyStatesLength: readyStates.length,
-            hasTriedAutoAdvance: hasTriedAutoAdvance.current
-        });
-
-        if (!currentGame || showBattleGame) {
-            console.log('⏸️ Skipping phase3 check - no game or already showing battle');
-            return;
-        }
-
-        if (currentGame.phase3Started && readyStates.length > 0 && !hasTriedAutoAdvance.current) {
-            const readyCount = readyStates.filter(s => s.ready).length;
-
-            console.log('🎮 Phase3 already started!', {
-                readyCount,
-                readyPlayers: readyStates.filter(s => s.ready).map(s => s.player.slice(0, 8))
-            });
-
-            if (readyCount >= 2) {
-                hasTriedAutoAdvance.current = true;
-
-                console.log('✅ Auto-redirecting to battle...');
-                toast.success('⚔️ Battle in progress! Joining arena...', { duration: 2000 });
-
-                setTimeout(() => {
-                    console.log('🚀 Setting showBattleGame = true');
-                    setShowBattleGame(true);
-                }, 1500);
-            } else {
-                console.log('⚠️ Not enough ready players for battle:', readyCount);
-            }
-        } else {
-            console.log('⏳ Waiting for phase3 to start or more ready states');
-        }
-    }, [currentGame?.phase3Started, readyStates, showBattleGame]);
-
+    // ============================================
+    // CALCULATE GAME STATISTICS
+    // ============================================
     useEffect(() => {
         if (!currentGame) return;
 
@@ -201,7 +279,6 @@ const Phase3 = () => {
 
                 const prizePool = currentGame.entryFee * currentGame.players.length;
                 setTotalPrizePool(prizePool);
-                console.log('💰 Prize Pool (entry_fee * players):', prizePool.toFixed(4), 'SOL');
 
                 let totalVirtual = 0;
                 try {
@@ -220,7 +297,6 @@ const Phase3 = () => {
 
                     const balances = await Promise.all(balancePromises);
                     totalVirtual = balances.reduce((sum, bal) => sum + bal, 0);
-                    console.log('💎 Total Virtual Balance:', totalVirtual.toFixed(4), 'SOL');
                 } catch (error) {
                     console.error('Error calculating virtual balance:', error);
                     totalVirtual = prizePool * 10;
@@ -250,29 +326,22 @@ const Phase3 = () => {
                     totalGames = 0;
                 }
                 setTotalMiniGamesPlayed(totalGames);
-
-                console.log('✅ Stats updated:', {
-                    eliminated,
-                    prizePool: prizePool.toFixed(4),
-                    virtualBalance: totalVirtual.toFixed(4),
-                    miniGames: totalGames
-                });
             } catch (error) {
-                console.error('❌ Error calculating stats:', error);
+                console.error('Error calculating stats:', error);
             }
         };
 
         calculateStats();
     }, [currentGame?.gameId, currentGame?.players, currentGame?.currentPlayers]);
 
+    // ============================================
+    // FETCH READY STATES
+    // ============================================
     useEffect(() => {
         if (!currentGame || currentGame.currentPhase !== 3) return;
 
         const wrappedFetchReadyStates = async () => {
-            if (isFetchingReadyStates.current) {
-                console.log('⏸️ Ready states fetch already in progress, skipping...');
-                return;
-            }
+            if (isFetchingReadyStates.current) return;
             await fetchReadyStates();
         };
 
@@ -281,6 +350,30 @@ const Phase3 = () => {
         return () => clearInterval(interval);
     }, [currentGame?.gameId, currentGame?.currentPhase]);
 
+    // ============================================
+    // 🎮 AUTO-REDIRECT when phase3Started becomes true
+    // ============================================
+    useEffect(() => {
+        if (!currentGame) return;
+
+        if (currentGame.phase3Started && !showBattleGame && !redirecting) {
+            console.log('[Phase3] 🚨 Phase 3 already started! Force redirecting to battle game...');
+
+            toast.info('⚔️ Battle in progress! Joining now...', { duration: 2000 });
+
+            setRedirecting(true);
+
+            setTimeout(() => {
+                console.log('[Phase3] 🎮 Showing battle game NOW');
+                setShowBattleGame(true);
+                setRedirecting(false);
+            }, 1500);
+        }
+    }, [currentGame?.phase3Started, showBattleGame, redirecting]);
+
+    // ============================================
+    // UPDATE TIMER
+    // ============================================
     useEffect(() => {
         if (!currentGame || currentGame.currentPhase !== 3) return;
 
@@ -289,6 +382,158 @@ const Phase3 = () => {
         return () => clearInterval(interval);
     }, [currentGame, readyStates]);
 
+    // ============================================
+    // 🎮 AUTO-START DETECTION - Check if all ready
+    // ============================================
+    useEffect(() => {
+        if (!currentGame || !readyStates.length) return;
+        if (currentGame.phase3Started) return;
+        if (!wsConnected) return;
+        if (hasTriggeredAutoStart) return;
+
+        const readyCount = readyStates.filter(s => s.ready).length;
+        const totalPlayers = currentGame.currentPlayers;
+
+        if (readyCount === totalPlayers && totalPlayers > 0) {
+            console.log(`[Phase3] 🎮 ALL PLAYERS READY! (${readyCount}/${totalPlayers}) - TRIGGERING AUTO-START`);
+
+            const now = Date.now();
+            let deadline: Date | null = null;
+
+            const parseDeadline = (dl: any): Date | null => {
+                if (!dl) return null;
+                try {
+                    let date: Date;
+                    if (dl instanceof Date) date = dl;
+                    else if (typeof dl === 'number') date = new Date(dl);
+                    else if (typeof dl === 'string') date = new Date(dl);
+                    else date = new Date(dl);
+                    if (isNaN(date.getTime())) return null;
+                    if (date.getTime() < new Date('2020-01-01').getTime()) return null;
+                    return date;
+                } catch { return null; }
+            };
+
+            const extendedDeadline = parseDeadline(currentGame.phase3ExtendedDeadline);
+            const readyDeadline = parseDeadline(currentGame.phase3ReadyDeadline);
+
+            if (extendedDeadline && extendedDeadline.getTime() > now) {
+                deadline = extendedDeadline;
+            } else if (readyDeadline && readyDeadline.getTime() > now) {
+                deadline = readyDeadline;
+            }
+
+            const timeUntilDeadline = deadline ? Math.ceil((deadline.getTime() - now) / 1000) : 0;
+
+            setHasTriggeredAutoStart(true);
+
+            if (timeUntilDeadline > 0) {
+                toast.success(`🎮 All ${totalPlayers} players ready! Starting when deadline expires in ${timeUntilDeadline}s...`, {
+                    duration: 5000,
+                    icon: '⚔️'
+                });
+            } else {
+                toast.success(`🎮 All ${totalPlayers} players ready! Starting now...`, {
+                    duration: 3000,
+                    icon: '⚔️'
+                });
+            }
+        }
+    }, [readyStates, currentGame?.currentPlayers, currentGame?.phase3Started, wsConnected, hasTriggeredAutoStart, currentGame?.phase3ExtendedDeadline, currentGame?.phase3ReadyDeadline]);
+
+    // ============================================
+    // 🚀 AUTO-START COUNTDOWN - Runs ONCE when flag is set
+    // ============================================
+    useEffect(() => {
+        if (!hasTriggeredAutoStart) return;
+        if (!currentGame || !startPhase3Game) return;
+
+        const now = Date.now();
+        let deadline: Date | null = null;
+
+        const parseDeadline = (dl: any): Date | null => {
+            if (!dl) return null;
+            try {
+                let date: Date;
+                if (dl instanceof Date) date = dl;
+                else if (typeof dl === 'number') date = new Date(dl);
+                else if (typeof dl === 'string') date = new Date(dl);
+                else date = new Date(dl);
+
+                if (isNaN(date.getTime())) return null;
+                if (date.getTime() < new Date('2020-01-01').getTime()) return null;
+                return date;
+            } catch {
+                return null;
+            }
+        };
+
+        const extendedDeadline = parseDeadline(currentGame.phase3ExtendedDeadline);
+        const readyDeadline = parseDeadline(currentGame.phase3ReadyDeadline);
+
+        if (extendedDeadline && extendedDeadline.getTime() > now) {
+            deadline = extendedDeadline;
+        } else if (readyDeadline && readyDeadline.getTime() > now) {
+            deadline = readyDeadline;
+        }
+
+        if (!deadline) {
+            console.log('[Phase3] ❌ No valid deadline found, cannot auto-start');
+            setHasTriggeredAutoStart(false);
+            return;
+        }
+
+        const timeUntilDeadline = deadline.getTime() - now;
+        const waitTime = Math.max(timeUntilDeadline + 500, 1000);
+
+        console.log(`[Phase3] ⏱️ Starting countdown... waiting ${(waitTime / 1000).toFixed(1)} seconds until deadline`);
+
+        const countdownTimer = setTimeout(async () => {
+            console.log('[Phase3] 🚀 Deadline passed! Auto-starting game NOW...');
+
+            try {
+                console.log('[Phase3] 📞 Calling startPhase3Game...');
+                await retryTransaction(
+                    () => startPhase3Game(currentGame.gameId),
+                    'Auto-Start Phase 3 Game'
+                );
+
+                console.log('[Phase3] 📡 Sending WebSocket start_game...');
+                wsManager.send({
+                    type: 'start_game',
+                    gameId: currentGame.gameId
+                });
+
+                toast.success('⚔️ Phase 3 Started!');
+                console.log('[Phase3] ✅ Auto-start SUCCESS!');
+
+                console.log('[Phase3] 🎮 Forcing redirect to battle game...');
+                setRedirecting(true);
+
+                setTimeout(() => {
+                    console.log('[Phase3] 🎮 Showing battle game NOW');
+                    setShowBattleGame(true);
+                    setRedirecting(false);
+                }, 2000);
+
+            } catch (error: any) {
+                console.error('[Phase3] ❌ Auto-start FAILED:', error);
+                toast.error(error.message || 'Failed to auto-start game');
+                setHasTriggeredAutoStart(false);
+            }
+        }, waitTime);
+
+        console.log('[Phase3] ✅ Countdown timer set');
+
+        return () => {
+            console.log('[Phase3] 🧹 Component unmounting, clearing countdown');
+            clearTimeout(countdownTimer);
+        };
+    }, [hasTriggeredAutoStart, currentGame?.phase3ExtendedDeadline, currentGame?.phase3ReadyDeadline]);
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
     const fetchReadyStates = async () => {
         if (!currentGame || !getPhase3ReadyStates || !wallet.publicKey) return;
         if (isFetchingReadyStates.current) return;
@@ -302,10 +547,9 @@ const Phase3 = () => {
             const myState = states.find(s => s.player === wallet.publicKey?.toBase58());
             setIsReady(myState?.ready || false);
 
-            console.log('✅ Ready states fetched:', states.length, 'players');
-            console.log('✅ Ready count:', states.filter(s => s.ready).length);
+            console.log('[Phase3] Ready states:', states.filter(s => s.ready).length, '/', states.length);
         } catch (error) {
-            console.error('❌ Error fetching ready states:', error);
+            console.error('[Phase3] Error fetching ready states:', error);
         } finally {
             isFetchingReadyStates.current = false;
         }
@@ -335,15 +579,12 @@ const Phase3 = () => {
 
                 if (isNaN(date.getTime())) return null;
 
-                // Reject dates before 2020 (likely uninitialized)
                 if (date.getTime() < new Date('2020-01-01').getTime()) {
-                    console.warn('⚠️ Deadline is before 2020, probably uninitialized:', date);
                     return null;
                 }
 
                 return date;
             } catch (error) {
-                console.error('Failed to parse deadline:', error);
                 return null;
             }
         };
@@ -353,15 +594,11 @@ const Phase3 = () => {
 
         if (extendedDeadline && extendedDeadline.getTime() > now) {
             deadline = extendedDeadline;
-            console.log('✅ Using extended deadline:', deadline.toISOString());
         } else if (readyDeadline && readyDeadline.getTime() > now) {
             deadline = readyDeadline;
-            console.log('✅ Using ready deadline:', deadline.toISOString());
         } else if (readyDeadline) {
             deadline = readyDeadline;
-            console.log('⏰ Using expired ready deadline:', deadline.toISOString());
         } else {
-            console.warn('⚠️ No valid deadline found');
             setTimeRemaining('N/A');
             setCanAdvance(false);
             return;
@@ -370,20 +607,8 @@ const Phase3 = () => {
         const diff = deadline.getTime() - now;
 
         if (diff <= 0) {
-            console.log('🔴 TIME EXPIRED!');
             setTimeRemaining('EXPIRED');
             setCanAdvance(true);
-
-            if (!currentGame.phase3Started && !hasTriedAutoAdvance.current) {
-                hasTriedAutoAdvance.current = true;
-
-                console.log('🚀 Time expired - auto-advancing...');
-                toast.info('⏰ Deadline expired! Starting Phase 3...', { duration: 2000 });
-
-                setTimeout(async () => {
-                    await handleStartGame();
-                }, 2000);
-            }
             return;
         }
 
@@ -399,13 +624,23 @@ const Phase3 = () => {
         setCanAdvance(false);
     };
 
+    // ============================================
+    // HANDLER FUNCTIONS
+    // ============================================
     const handleMarkReady = async () => {
         if (!currentGame || !markReadyPhase3) return;
+
         try {
             await retryTransaction(
                 () => markReadyPhase3(currentGame.gameId),
                 'Mark Ready Phase 3'
             );
+
+            wsManager.send({
+                type: 'mark_ready',
+                gameId: currentGame.gameId
+            });
+
             toast.success('✅ Marked as ready!');
             await fetchReadyStates();
         } catch (error: any) {
@@ -423,39 +658,26 @@ const Phase3 = () => {
                 'Start Phase 3 Game'
             );
 
-            const readyCount = readyStates.filter(s => s.ready).length;
-            const isExtended = !!currentGame.phase3ExtendedDeadline &&
-                new Date(currentGame.phase3ExtendedDeadline).getTime() > new Date('2020-01-01').getTime();
+            wsManager.send({
+                type: 'start_game',
+                gameId: currentGame.gameId
+            });
 
-            if (readyCount === 0) {
-                toast.info(isExtended
-                    ? '📊 Prize redistributed proportionally'
-                    : '⏰ Deadline extended by 1 hour'
-                );
-                await solanaGame.refreshGames();
+            toast.success('⚔️ Starting Phase 3...');
 
-            } else if (readyCount === 1) {
-                const winner = readyStates.find(s => s.ready);
-                const prizeAmount = totalPrizePool * 0.99;
+            console.log('[Phase3] 🎮 Manual start - forcing redirect to battle game...');
+            setRedirecting(true);
 
-                toast.success(`🏆 Auto-winner: ${winner?.player.slice(0, 8)}...`);
+            setTimeout(() => {
+                console.log('[Phase3] 🎮 Showing battle game NOW');
+                setShowBattleGame(true);
+                setRedirecting(false);
+            }, 2000);
 
-                setTimeout(() => {
-                    navigate(`/phase3/winner?gameId=${currentGame.gameId}&winner=${winner?.player}&prize=${prizeAmount}`);
-                }, 2000);
-
-            } else {
-                toast.success('⚔️ THE PURGE BEGINS!');
-                setRedirecting(true);
-
-                setTimeout(() => {
-                    setShowBattleGame(true);
-                    setRedirecting(false);
-                }, 1000);
-            }
         } catch (error: any) {
             console.error('Failed to start Phase 3 game:', error);
             toast.error(error.message || 'Failed to start game');
+            setHasTriggeredAutoStart(false);
         }
     };
 
@@ -463,7 +685,7 @@ const Phase3 = () => {
         if (!currentGame || !solanaGame) return;
 
         try {
-            console.log('🏆 Submitting battle winner to blockchain:', winnerAddress);
+            console.log('[Phase3] Submitting battle winner:', winnerAddress);
 
             const winnerPubkey = new PublicKey(winnerAddress);
             await solanaGame.submitPhase3Winner(currentGame.gameId, winnerPubkey);
@@ -498,6 +720,9 @@ const Phase3 = () => {
         }
     };
 
+    // ============================================
+    // LOADING STATE
+    // ============================================
     if (isInitializing || !program || wallet.connecting || !wallet.publicKey || !currentGame || gameId === null) {
         return (
             <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white flex items-center justify-center">
@@ -526,7 +751,11 @@ const Phase3 = () => {
     const isExtended = !!currentGame.phase3ExtendedDeadline &&
         new Date(currentGame.phase3ExtendedDeadline).getTime() > new Date('2020-01-01').getTime();
     const isCreator = wallet.publicKey?.toBase58() === currentGame.creator;
+    const allPlayersReady = readyCount === totalPlayers && totalPlayers > 0;
 
+    // ============================================
+    // RENDER
+    // ============================================
     return (
         <div className="min-h-screen bg-background relative overflow-hidden">
             <ParticleBackground />
@@ -567,6 +796,23 @@ const Phase3 = () => {
                     <p className="text-xl md:text-2xl text-muted-foreground mb-6">
                         Mark yourself READY to participate in the final battle!
                     </p>
+
+                    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${wsConnected
+                        ? 'bg-green-900/30 border border-green-600'
+                        : 'bg-red-900/30 border border-red-600'
+                        }`}>
+                        {wsConnected ? (
+                            <>
+                                <Wifi className="w-5 h-5 text-green-400 animate-pulse" />
+                                <span className="text-green-300 font-semibold">Connected to Server</span>
+                            </>
+                        ) : (
+                            <>
+                                <WifiOff className="w-5 h-5 text-red-400" />
+                                <span className="text-red-300 font-semibold">Connecting...</span>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
@@ -636,39 +882,51 @@ const Phase3 = () => {
                                 </div>
                             </div>
                             <div className="text-center">
-                                <p className={`text-5xl font-mono font-black ${canAdvance ? 'text-red-500 animate-pulse' : 'text-red-400'
-                                    }`}>
+                                <p className={`text-5xl font-mono font-black ${canAdvance ? 'text-red-500 animate-pulse' : 'text-red-400'}`}>
                                     {timeRemaining}
                                 </p>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
-                {currentGame.phase3Started && !showBattleGame && readyCount >= 2 && (
-                    <Card className="mb-8 border-2 border-green-600 bg-gradient-to-r from-green-900/30 to-emerald-900/20 backdrop-blur-md animate-pulse">
+
+                {allPlayersReady && !currentGame.phase3Started && serverGamePhase === 'waiting' && (
+                    <Card className="mb-8 border-2 border-green-600 bg-gradient-to-r from-green-900/40 to-emerald-900/30 backdrop-blur-md animate-pulse">
                         <CardContent className="p-6 text-center">
-                            <div className="text-6xl mb-4">⚔️</div>
-                            <h3 className="text-3xl font-bold text-green-400 mb-4">
-                                THE PURGE IS ACTIVE!
-                            </h3>
-                            <p className="text-xl text-gray-300 mb-6">
-                                {readyCount} warriors are battling in the arena right now!
-                            </p>
-                            <Button
-                                onClick={() => {
-                                    console.log('🔧 Manual join battle clicked');
-                                    hasTriedAutoAdvance.current = true;
-                                    setRedirecting(true);
-                                    setTimeout(() => {
-                                        setShowBattleGame(true);
-                                        setRedirecting(false);
-                                    }, 1000);
-                                }}
-                                className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 py-8 px-12 text-2xl font-black"
-                                size="lg"
-                            >
-                                💀 JOIN THE BATTLE NOW 💀
-                            </Button>
+                            <div className="flex items-center justify-center gap-4">
+                                <CheckCircle className="w-10 h-10 text-green-400 animate-bounce" />
+                                <div>
+                                    <p className="text-3xl font-black text-green-300">
+                                        🎮 ALL PLAYERS READY!
+                                    </p>
+                                    <p className="text-lg text-green-200 mt-2">
+                                        {timeRemaining !== 'EXPIRED' && timeRemaining !== 'N/A'
+                                            ? `Auto-starting when deadline expires (${timeRemaining})...`
+                                            : 'Auto-starting now...'}
+                                    </p>
+                                </div>
+                                <CheckCircle className="w-10 h-10 text-green-400 animate-bounce" />
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {serverGamePhase !== 'waiting' && (
+                    <Card className="mb-8 border-2 border-orange-600 bg-gradient-to-r from-orange-900/30 to-yellow-900/20 backdrop-blur-md">
+                        <CardContent className="p-6 text-center">
+                            <div className="flex items-center justify-center gap-4">
+                                <Zap className="w-8 h-8 text-orange-400 animate-pulse" />
+                                <div>
+                                    <p className="text-2xl font-bold text-orange-300">
+                                        Server Status: {serverGamePhase.toUpperCase()}
+                                    </p>
+                                    <p className="text-sm text-orange-200 mt-1">
+                                        {serverGamePhase === 'countdown' && 'Battle starting soon...'}
+                                        {serverGamePhase === 'active' && 'Battle in progress!'}
+                                        {serverGamePhase === 'ended' && 'Battle concluded'}
+                                    </p>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                 )}
@@ -708,8 +966,7 @@ const Phase3 = () => {
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-4">
-                                                    <div className={`w-3 h-3 rounded-full ${playerReady?.ready ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-                                                        }`} />
+                                                    <div className={`w-3 h-3 rounded-full ${playerReady?.ready ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
                                                     <div>
                                                         <div className="flex items-center gap-2">
                                                             <p className="font-mono text-sm font-bold">
@@ -745,12 +1002,41 @@ const Phase3 = () => {
                     </Card>
 
                     <div className="space-y-4">
-                        {!currentGame.phase3Started && !canAdvance && (
+                        {currentGame.phase3Started && !showBattleGame && (
+                            <Card className="border-2 border-orange-600 bg-gradient-to-br from-orange-900/40 to-red-900/30 backdrop-blur-md animate-pulse">
+                                <CardContent className="pt-6 space-y-4">
+                                    <Button
+                                        onClick={() => {
+                                            console.log('[Phase3] 🎮 Manual join battle clicked');
+                                            setRedirecting(true);
+                                            setTimeout(() => {
+                                                setShowBattleGame(true);
+                                                setRedirecting(false);
+                                            }, 1000);
+                                        }}
+                                        className="w-full bg-orange-600 hover:bg-orange-700 py-8 text-xl font-bold"
+                                        size="lg"
+                                    >
+                                        ⚔️ JOIN BATTLE NOW!
+                                    </Button>
+
+                                    <Alert className="bg-orange-900/30 border-orange-600">
+                                        <AlertCircle className="h-4 w-4" />
+                                        <AlertTitle>Battle Already Started!</AlertTitle>
+                                        <AlertDescription className="text-sm mt-2">
+                                            The Phase 3 battle is already in progress. Click above to join immediately!
+                                        </AlertDescription>
+                                    </Alert>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {serverGamePhase === 'waiting' && !canAdvance && !currentGame.phase3Started && (
                             <Card className="border-2 border-blue-600 bg-gradient-to-br from-blue-900/30 to-blue-800/20 backdrop-blur-md">
                                 <CardContent className="pt-6">
                                     <Button
                                         onClick={handleMarkReady}
-                                        disabled={loading || isReady}
+                                        disabled={loading || isReady || !wsConnected}
                                         className={`w-full py-8 text-xl font-bold ${isReady
                                             ? 'bg-green-600 hover:bg-green-600 cursor-not-allowed'
                                             : 'bg-blue-600 hover:bg-blue-700'
@@ -777,16 +1063,24 @@ const Phase3 = () => {
                                             </AlertDescription>
                                         </Alert>
                                     )}
+                                    {!wsConnected && (
+                                        <Alert className="mt-4 border-red-500/50 bg-red-500/10">
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertDescription>
+                                                Connecting to game server...
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
                                 </CardContent>
                             </Card>
                         )}
 
-                        {canAdvance && !currentGame.phase3Started && (
+                        {(canAdvance || allPlayersReady) && serverGamePhase === 'waiting' && !currentGame.phase3Started && (
                             <Card className="border-2 border-red-600 bg-gradient-to-br from-red-900/30 to-red-800/20 backdrop-blur-md">
                                 <CardContent className="pt-6 space-y-4">
                                     <Button
                                         onClick={handleStartGame}
-                                        disabled={loading}
+                                        disabled={loading || !wsConnected}
                                         className="w-full bg-red-600 hover:bg-red-700 py-8 text-xl font-bold"
                                         size="lg"
                                     >
@@ -797,19 +1091,20 @@ const Phase3 = () => {
                                             </>
                                         ) : (
                                             <>
-                                                🚀 START PHASE 3
+                                                🚀 START PHASE 3 NOW
                                             </>
                                         )}
                                     </Button>
 
                                     <Alert className="bg-yellow-900/30 border-yellow-600">
                                         <AlertCircle className="h-4 w-4" />
-                                        <AlertTitle>What happens next:</AlertTitle>
+                                        <AlertTitle>Manual Start Available:</AlertTitle>
                                         <AlertDescription className="text-sm mt-2">
-                                            {readyCount === 0 && !isExtended && '⏰ Deadline will be extended by 1 hour'}
-                                            {readyCount === 0 && isExtended && '📊 Prize will be redistributed proportionally'}
-                                            {readyCount === 1 && '🏆 Auto-winner! Only 1 player ready'}
-                                            {readyCount >= 2 && `🎮 Game starts with ${readyCount} ready players`}
+                                            {allPlayersReady && !canAdvance && '🎮 All players ready! You can start immediately or wait for auto-start.'}
+                                            {canAdvance && readyCount === 0 && !isExtended && '⏰ Deadline expired - This will extend deadline by 1 hour'}
+                                            {canAdvance && readyCount === 0 && isExtended && '📊 No players ready - Prize will be redistributed'}
+                                            {canAdvance && readyCount === 1 && '🏆 Only 1 player ready - They win automatically!'}
+                                            {canAdvance && readyCount >= 2 && `⚔️ ${readyCount} players ready - Battle starts!`}
                                         </AlertDescription>
                                     </Alert>
                                 </CardContent>
@@ -822,10 +1117,12 @@ const Phase3 = () => {
                             </CardHeader>
                             <CardContent className="text-sm text-muted-foreground space-y-2">
                                 <p>• Mark yourself READY within {isExtended ? '1 hour' : '30 minutes'}</p>
+                                <p>• If ALL players ready → Game auto-starts when deadline expires!</p>
                                 <p>• If 0 players ready → Deadline extends by 1 hour</p>
                                 <p>• If 1 player ready → Auto-winner declared</p>
-                                <p>• If 2+ players ready → Battle begins!</p>
+                                <p>• If 2+ players ready → Battle begins at deadline!</p>
                                 <p>• Winner takes 99% of prize pool</p>
+                                <p>• All players see synchronized countdown</p>
                             </CardContent>
                         </Card>
                     </div>

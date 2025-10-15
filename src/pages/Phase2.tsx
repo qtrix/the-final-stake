@@ -854,7 +854,7 @@ export default function Phase2() {
                                 <p className="text-3xl font-bold text-sol-orange">
                                     {playerState?.virtualBalance
                                         ? (playerState.virtualBalance / 1e9).toFixed(4)
-                                        : '0.0000'} SOL
+                                        : '0.0000'} vSOL
                                 </p>
                             </div>
                             <div className="text-center p-4 rounded-lg bg-accent/50">
@@ -999,7 +999,7 @@ export default function Phase2() {
                                         max={playerState?.virtualBalance ? playerState.virtualBalance / 1e9 : 0}
                                     />
                                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                                        SOL
+                                        vSOL
                                     </span>
                                 </div>
                                 {playerState && (

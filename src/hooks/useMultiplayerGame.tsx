@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+// src/hooks/useMultiplayerGame.tsx - Enhanced Multiplayer Hook with Server-Driven Sync
+
+import { useEffect, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PlayerState } from '@/types';
+import { wsManager } from '@/utils/websocketManager';
 
 interface UseMultiplayerGameOptions {
     gameId: number;
@@ -8,196 +11,136 @@ interface UseMultiplayerGameOptions {
     onPlayerUpdate?: (playerId: string, state: PlayerState) => void;
     onPlayerEliminated?: (playerId: string) => void;
     onWinnerDeclared?: (winnerId: string) => void;
+    onGamePhaseChange?: (phase: 'waiting' | 'countdown' | 'active' | 'ended') => void;
+    onCountdownSync?: (startTime: number, duration: number) => void;
 }
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://solana-survivor-ws.herokuapp.com';
-const RECONNECT_DELAY = 3000;
-const HEARTBEAT_INTERVAL = 20000;
-const UPDATE_THROTTLE = 50; // Send updates every 50ms (20 updates/sec)
+const UPDATE_THROTTLE = 50;
 
 export const useMultiplayerGame = ({
     gameId,
     enabled,
     onPlayerUpdate,
     onPlayerEliminated,
-    onWinnerDeclared
+    onWinnerDeclared,
+    onGamePhaseChange,
+    onCountdownSync
 }: UseMultiplayerGameOptions) => {
     const wallet = useWallet();
-    const wsRef = useRef<WebSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [otherPlayers, setOtherPlayers] = useState<Map<string, PlayerState>>(new Map());
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-    const heartbeatIntervalRef = useRef<NodeJS.Timeout>();
+    const [gamePhase, setGamePhase] = useState<'waiting' | 'countdown' | 'active' | 'ended'>('waiting');
     const lastUpdateTimeRef = useRef<number>(0);
-    const pendingUpdateRef = useRef<PlayerState | null>(null);
+    const handlerIdRef = useRef<string>(`handler-${Date.now()}-${Math.random()}`);
 
-    const connect = useCallback(() => {
-        if (!wallet.publicKey || !enabled) return;
-
-        try {
-            const playerId = wallet.publicKey.toBase58();
-            const ws = new WebSocket(`${WS_URL}?gameId=${gameId}&playerId=${playerId}`);
-            wsRef.current = ws;
-
-            ws.onopen = () => {
-                console.log('✅ Connected to multiplayer server');
-                setIsConnected(true);
-
-                // Start heartbeat
-                heartbeatIntervalRef.current = setInterval(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'heartbeat' }));
-                    }
-                }, HEARTBEAT_INTERVAL);
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-
-                    switch (message.type) {
-                        case 'sync':
-                            // Initial sync with all players
-                            const players = new Map<string, PlayerState>();
-                            message.players?.forEach((p: PlayerState) => {
-                                if (p.id !== playerId) {
-                                    players.set(p.id, p);
-                                }
-                            });
-                            setOtherPlayers(players);
-                            break;
-
-                        case 'update':
-                            // Player position update
-                            if (message.playerId !== playerId && message.data) {
-                                setOtherPlayers(prev => {
-                                    const updated = new Map(prev);
-                                    updated.set(message.playerId, message.data);
-                                    return updated;
-                                });
-                                onPlayerUpdate?.(message.playerId, message.data);
-                            }
-                            break;
-
-                        case 'eliminated':
-                            // Player eliminated
-                            setOtherPlayers(prev => {
-                                const updated = new Map(prev);
-                                const player = updated.get(message.playerId);
-                                if (player) {
-                                    updated.set(message.playerId, { ...player, alive: false });
-                                }
-                                return updated;
-                            });
-                            onPlayerEliminated?.(message.playerId);
-                            break;
-
-                        case 'winner':
-                            // Winner declared
-                            onWinnerDeclared?.(message.winnerId);
-                            break;
-                    }
-                } catch (error) {
-                    console.error('Failed to parse WebSocket message:', error);
-                }
-            };
-
-            ws.onclose = () => {
-                console.log('🔌 Disconnected from multiplayer server');
-                setIsConnected(false);
-
-                if (heartbeatIntervalRef.current) {
-                    clearInterval(heartbeatIntervalRef.current);
-                }
-
-                // Auto-reconnect
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    console.log('🔄 Reconnecting...');
-                    connect();
-                }, RECONNECT_DELAY);
-            };
-
-            ws.onerror = (error) => {
-                console.error('❌ WebSocket error:', error);
-            };
-        } catch (error) {
-            console.error('Failed to connect to multiplayer server:', error);
-        }
-    }, [gameId, wallet.publicKey, enabled, onPlayerUpdate, onPlayerEliminated, onWinnerDeclared]);
-
-    // Throttled update sender
     useEffect(() => {
-        if (!pendingUpdateRef.current) return;
-
-        const now = Date.now();
-        if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE) {
+        if (!enabled || !wallet.publicKey) {
             return;
         }
 
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-                type: 'update',
-                data: pendingUpdateRef.current
-            }));
-            lastUpdateTimeRef.current = now;
-            pendingUpdateRef.current = null;
-        }
-    }, []);
+        const playerId = wallet.publicKey.toBase58();
+        const handlersId = handlerIdRef.current;
 
-    const sendUpdate = useCallback((state: PlayerState) => {
-        pendingUpdateRef.current = state;
+        console.log('[Hook] Registering multiplayer handlers');
+
+        wsManager.connect(gameId, playerId, handlersId, {
+            onConnected: () => {
+                console.log('[Hook] Connected');
+                setIsConnected(true);
+            },
+            onDisconnected: () => {
+                console.log('[Hook] Disconnected');
+                setIsConnected(false);
+            },
+            onSync: (players) => {
+                const playersMap = new Map<string, PlayerState>();
+                players.forEach(p => {
+                    if (p.id !== playerId) {
+                        playersMap.set(p.id, p);
+                    }
+                });
+                setOtherPlayers(playersMap);
+                console.log('[Hook] Synced players:', players.length);
+            },
+            onUpdate: (id, state) => {
+                setOtherPlayers(prev => {
+                    const updated = new Map(prev);
+                    updated.set(id, state);
+                    return updated;
+                });
+                onPlayerUpdate?.(id, state);
+            },
+            onEliminated: (id) => {
+                setOtherPlayers(prev => {
+                    const updated = new Map(prev);
+                    const player = updated.get(id);
+                    if (player) {
+                        updated.set(id, { ...player, alive: false });
+                    }
+                    return updated;
+                });
+                onPlayerEliminated?.(id);
+            },
+            onWinner: (winnerId) => {
+                console.log('[Hook] Winner:', winnerId);
+                onWinnerDeclared?.(winnerId);
+            },
+            onPlayerConnected: (id) => {
+                console.log('[Hook] Player joined:', id.slice(0, 8));
+            },
+            onPlayerDisconnected: (id) => {
+                setOtherPlayers(prev => {
+                    const updated = new Map(prev);
+                    updated.delete(id);
+                    return updated;
+                });
+                console.log('[Hook] Player left:', id.slice(0, 8));
+            },
+            onGamePhaseChange: (phase) => {
+                console.log('[Hook] Game phase:', phase);
+                setGamePhase(phase);
+                onGamePhaseChange?.(phase);
+            },
+            onCountdownSync: (startTime, duration) => {
+                console.log('[Hook] Countdown sync:', { startTime, duration });
+                onCountdownSync?.(startTime, duration);
+            }
+        });
+
+        return () => {
+            console.log('[Hook] Unregistering handlers');
+            wsManager.unregisterHandler(handlersId);
+        };
+    }, [gameId, enabled, wallet.publicKey, onPlayerUpdate, onPlayerEliminated, onWinnerDeclared, onGamePhaseChange, onCountdownSync]);
+
+    const sendUpdate = (state: PlayerState) => {
+        if (!wsManager.isConnected()) return;
 
         const now = Date.now();
         if (now - lastUpdateTimeRef.current >= UPDATE_THROTTLE) {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({
-                    type: 'update',
-                    data: state
-                }));
-                lastUpdateTimeRef.current = now;
-                pendingUpdateRef.current = null;
-            }
+            wsManager.send({ type: 'update', data: state });
+            lastUpdateTimeRef.current = now;
         }
-    }, []);
+    };
 
-    const sendEliminated = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-                type: 'eliminated'
-            }));
+    const sendEliminated = () => {
+        if (wsManager.isConnected()) {
+            wsManager.send({ type: 'eliminated' });
+            console.log('[Hook] Sent elimination');
         }
-    }, []);
+    };
 
-    const sendWinner = useCallback((winnerId: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-                type: 'winner',
-                winnerId
-            }));
+    const sendWinner = (winnerId: string) => {
+        if (wsManager.isConnected()) {
+            wsManager.send({ type: 'winner', winnerId });
+            console.log('[Hook] Sent winner:', winnerId.slice(0, 8));
         }
-    }, []);
-
-    useEffect(() => {
-        if (enabled) {
-            connect();
-        }
-
-        return () => {
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-            }
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-            }
-            if (wsRef.current) {
-                wsRef.current.close();
-            }
-        };
-    }, [enabled, connect]);
+    };
 
     return {
         isConnected,
         otherPlayers,
+        gamePhase,
         sendUpdate,
         sendEliminated,
         sendWinner

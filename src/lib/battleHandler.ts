@@ -1,4 +1,4 @@
-// src/lib/battleHandler.ts - Battle Handler cu WebSocket
+// src/lib/battleHandler.ts - Battle Handler with WebSocket
 
 import { PublicKey } from '@solana/web3.js';
 import { rpsEngine, type RPSGameState, type RPSMove } from './gameEngines/rockPaperScissors';
@@ -87,7 +87,7 @@ export class BattleHandler {
             },
 
             onGameReady: (data) => {
-                console.log('✅ Both players connected, game ready!');
+                console.log('✅ Both players connected!');
                 this.state.battleStatus = 'in_progress';
                 this.state.gameState.gameStatus = 'playing';
                 this.state.opponentConnected = true;
@@ -96,13 +96,12 @@ export class BattleHandler {
             },
 
             onOpponentMoved: (data) => {
-                console.log('🤖 Opponent made a move (hidden)');
-                // Don't reveal move yet, just indicate they moved
+                console.log('🤖 Opponent moved');
                 this.notifyStateChange();
             },
 
             onRoundComplete: (data) => {
-                console.log('🎲 Round complete, both moves received:', data);
+                console.log('🎲 Round complete:', data);
 
                 const opponentMove = data.moves.find(
                     m => m.playerAddress !== this.state.playerAddress.toBase58()
@@ -114,7 +113,7 @@ export class BattleHandler {
             },
 
             onGameEnded: (data) => {
-                console.log('🏆 Game ended notification received');
+                console.log('🏆 Game ended');
             },
 
             onOpponentLeft: (data) => {
@@ -125,7 +124,7 @@ export class BattleHandler {
             onError: (error) => {
                 console.error('❌ WebSocket error:', error);
                 this.state.battleStatus = 'error';
-                this.state.error = 'Connection error. Please try again.';
+                this.state.error = 'Connection error';
                 this.notifyStateChange();
             },
         });
@@ -137,11 +136,11 @@ export class BattleHandler {
         }
 
         if (this.state.playerMove !== null) {
-            throw new Error('Move already submitted for this round');
+            throw new Error('Move already submitted');
         }
 
         if (this.state.battleStatus !== 'in_progress') {
-            throw new Error('Battle is not in progress');
+            throw new Error('Battle not in progress');
         }
 
         this.state.playerMove = move;
@@ -150,7 +149,7 @@ export class BattleHandler {
 
         try {
             this.wsManager.submitMove(move, this.state.gameState.currentRound);
-            console.log(`✋ Move submitted: ${move}, waiting for opponent...`);
+            console.log(`✋ Move submitted: ${move}`);
             this.notifyStateChange();
         } catch (error) {
             console.error('Failed to submit move:', error);
@@ -168,7 +167,7 @@ export class BattleHandler {
 
         this.state.opponentMove = move;
         this.state.waitingForOpponent = false;
-        console.log(`🤖 Opponent move received: ${move}`);
+        console.log(`🤖 Opponent move: ${move}`);
 
         this.notifyStateChange();
 
@@ -181,7 +180,7 @@ export class BattleHandler {
 
     private processRound() {
         if (!this.state.playerMove || !this.state.opponentMove) {
-            throw new Error('Both players must submit moves before processing');
+            throw new Error('Both players must submit moves');
         }
 
         this.stopRoundTimer();
@@ -197,11 +196,7 @@ export class BattleHandler {
         this.state.opponentMove = null;
         this.state.moveSubmittedAt = null;
 
-        console.log(`📊 Round ${newGameState.currentRound - 1} processed:`, {
-            playerScore: newGameState.playerScore,
-            opponentScore: newGameState.opponentScore,
-            status: newGameState.gameStatus,
-        });
+        console.log(`📊 Round ${newGameState.currentRound - 1} processed`);
 
         this.notifyStateChange();
 
@@ -275,7 +270,7 @@ export class BattleHandler {
             ? this.state.playerAddress
             : this.state.opponentAddress;
 
-        console.log(`⚠️ Battle force-ended: ${reason}. Winner: ${winnerAddress.toBase58()}`);
+        console.log(`⚠️ Battle force-ended: ${reason}`);
 
         this.notifyStateChange();
 
@@ -307,3 +302,6 @@ export class BattleHandler {
         return Math.max(0, this.state.roundTimeLimit - elapsed);
     }
 }
+
+// IMPORTANT: Default export
+export default BattleHandler;
