@@ -1,0 +1,21 @@
+# Netlify Configuration File
+
+[build]
+  publish = "dist"
+
+# Environment Variables
+[context.production.environment]
+  VITE_PHASE2_WS_URL = "wss://solana-survivor-pvp-server-production.up.railway.app"
+  VITE_WS_URL = "wss://purge-server-production.up.railway.app"
+
+[context.deploy-preview.environment]
+  VITE_PHASE2_WS_URL = "wss://solana-survivor-pvp-server-production.up.railway.app"
+  VITE_WS_URL = "wss://purge-server-production.up.railway.app"
+
+[context.branch-deploy.environment]
+  VITE_PHASE2_WS_URL = "wss://solana-survivor-pvp-server-production.up.railway.app"
+  VITE_WS_URL = "wss://purge-server-production.up.railway.app"
+
+[context.dev.environment]
+  VITE_PHASE2_WS_URL = "wss://solana-survivor-pvp-server-production.up.railway.app"
+  VITE_WS_URL = "wss://purge-server-production.up.railway.app"
