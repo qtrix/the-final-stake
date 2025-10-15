@@ -361,6 +361,20 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         });
     }, []);
 
+    // ✅ MOBILE: Touch controls
+    const handleTouchMove = useCallback((e: TouchEvent) => {
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        if (!canvas || !e.touches[0]) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        setMouse({
+            x: (touch.clientX - rect.left) * (900 / rect.width),
+            y: (touch.clientY - rect.top) * (700 / rect.height)
+        });
+    }, []);
+
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas || !gameStarted) return;
@@ -368,11 +382,15 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         canvas.width = 900;
         canvas.height = 700;
         canvas.addEventListener('mousemove', handleMouseMove, { passive: true });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchstart', handleTouchMove, { passive: false });
 
         return () => {
             canvas.removeEventListener('mousemove', handleMouseMove);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchstart', handleTouchMove);
         };
-    }, [handleMouseMove, gameStarted]);
+    }, [handleMouseMove, handleTouchMove, gameStarted]);
 
     const isOutsideSafeZone = useCallback((x: number, y: number) => {
         const dx = x - safeZone.x;
@@ -856,128 +874,131 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             <div className="fixed inset-0 bg-gradient-to-b from-transparent via-red-900/10 to-black/30 pointer-events-none"></div>
             <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.8)_100%)] pointer-events-none"></div>
 
-            {/* Top Stats Bar */}
-            <div className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b-2 border-red-600/50 p-4">
-                <div className="flex justify-center gap-8 flex-wrap">
+            {/* Top Stats Bar - MOBILE RESPONSIVE */}
+            <div className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b-2 border-red-600/50 p-2 sm:p-4">
+                <div className="flex justify-center gap-2 sm:gap-8 flex-wrap text-xs sm:text-base">
                     <div className="text-center group">
-                        <div className="text-3xl font-black text-green-400 font-mono tracking-wider group-hover:text-green-300 transition-colors">
+                        <div className="text-lg sm:text-3xl font-black text-green-400 font-mono tracking-wider group-hover:text-green-300 transition-colors">
                             {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
                         </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">TIME ALIVE</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">TIME</div>
                     </div>
 
                     <div className="text-center group">
-                        <div className="text-3xl font-black text-red-400 group-hover:text-red-300 transition-colors">{remainingPlayers}</div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">REMAINING</div>
+                        <div className="text-lg sm:text-3xl font-black text-red-400 group-hover:text-red-300 transition-colors">{remainingPlayers}</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">ALIVE</div>
                     </div>
 
                     <div className="text-center group">
-                        <div className="text-3xl font-black text-orange-400 group-hover:text-orange-300 transition-colors">{eliminated}</div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">ELIMINATED</div>
+                        <div className="text-lg sm:text-3xl font-black text-orange-400 group-hover:text-orange-300 transition-colors">{eliminated}</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">DEAD</div>
                     </div>
 
                     <div className="text-center group">
-                        <div className="text-3xl font-black text-cyan-400 flex items-center gap-2 group-hover:text-cyan-300 transition-colors">
-                            <Coins className="w-6 h-6" />
+                        <div className="text-lg sm:text-3xl font-black text-cyan-400 flex items-center gap-1 sm:gap-2 group-hover:text-cyan-300 transition-colors">
+                            <Coins className="w-4 h-4 sm:w-6 sm:h-6" />
                             {virtualBalance.toFixed(0)}
                         </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">vSOL</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">vSOL</div>
                     </div>
 
                     <div className="text-center group">
-                        <div className="text-3xl font-black text-pink-400 flex items-center gap-2 group-hover:text-pink-300 transition-colors">
-                            <Heart className="w-6 h-6" />
+                        <div className="text-lg sm:text-3xl font-black text-pink-400 flex items-center gap-1 sm:gap-2 group-hover:text-pink-300 transition-colors">
+                            <Heart className="w-4 h-4 sm:w-6 sm:h-6" />
                             {myPlayer?.hp || 0}
                         </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">VITALITY</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">HP</div>
                     </div>
 
-                    <div className="text-center group">
-                        <div className="text-2xl font-black text-cyan-400 group-hover:text-cyan-300 transition-colors">
+                    <div className="text-center group hidden sm:block">
+                        <div className="text-xl sm:text-2xl font-black text-cyan-400 group-hover:text-cyan-300 transition-colors">
                             {Math.round(safeZone.radius)}m
                         </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">DEATH ZONE</div>
+                        <div className="text-xs text-red-300 font-semibold tracking-wide">ZONE</div>
                     </div>
 
                     <div className="text-center">
-                        <div className={`text-2xl font-black flex items-center gap-2 ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                            {isConnected ? <Wifi className="w-6 h-6" /> : <WifiOff className="w-6 h-6" />}
+                        <div className={`text-lg sm:text-2xl font-black flex items-center gap-1 sm:gap-2 ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                            {isConnected ? <Wifi className="w-4 h-4 sm:w-6 sm:h-6" /> : <WifiOff className="w-4 h-4 sm:w-6 sm:h-6" />}
                         </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">{isConnected ? 'ONLINE' : 'OFFLINE'}</div>
+                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide hidden sm:block">{isConnected ? 'ON' : 'OFF'}</div>
                     </div>
                 </div>
             </div>
 
-            {/* Power-ups Bar - RIGHT SIDE VERTICAL */}
-            <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40">
-                <div className="bg-black/90 backdrop-blur-xl border-2 border-red-600/50 rounded-xl p-4 shadow-2xl shadow-red-900/50 max-w-[200px]">
-                    <div className="text-center mb-3">
-                        <h3 className="text-sm font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent mb-1">
+            {/* Power-ups Bar - MOBILE: Bottom, DESKTOP: Right */}
+            <div className="fixed bottom-4 left-0 right-0 sm:right-4 sm:left-auto sm:top-1/2 sm:-translate-y-1/2 sm:bottom-auto z-40 px-4 sm:px-0">
+                <div className="bg-black/90 backdrop-blur-xl border-2 border-red-600/50 rounded-xl p-3 sm:p-4 shadow-2xl shadow-red-900/50 max-w-full sm:max-w-[200px] mx-auto">
+                    <div className="text-center mb-2 sm:mb-3">
+                        <h3 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent mb-1">
                             💀 ARSENAL 💀
                         </h3>
-                        <p className="text-red-300 text-xs">Press 1, 2, 3</p>
+                        <p className="text-red-300 text-[10px] sm:text-xs">Press 1, 2, 3</p>
                     </div>
-                    <div className="flex flex-col gap-3">
+                    <div className="flex sm:flex-col gap-2 sm:gap-3 justify-center">
                         <Button
                             onClick={() => buyPowerUp('speed')}
                             disabled={virtualBalance < getSpeedCost || myPlayer?.hasSpeed || !myPlayer?.alive}
-                            className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2.5 font-bold text-white text-xs border-2 border-yellow-500/50 shadow-lg hover:shadow-yellow-500/25 transition-all w-full"
+                            className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed px-2 sm:px-3 py-2 sm:py-2.5 font-bold text-white text-[10px] sm:text-xs border-2 border-yellow-500/50 shadow-lg hover:shadow-yellow-500/25 transition-all flex-1 sm:w-full"
                         >
-                            <div className="flex flex-col items-center gap-1">
+                            <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                                 <div className="flex items-center gap-1">
-                                    <Zap className="w-4 h-4" />
-                                    <span>[1] SPEED</span>
+                                    <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
+                                    <span className="hidden sm:inline">[1] SPEED</span>
+                                    <span className="sm:hidden">SPD</span>
                                 </div>
-                                <span className="text-xs opacity-75">({getSpeedCost} vSOL)</span>
+                                <span className="text-[9px] sm:text-xs opacity-75">({getSpeedCost})</span>
                             </div>
                         </Button>
 
                         <Button
                             onClick={() => buyPowerUp('shield')}
                             disabled={virtualBalance < getShieldCost || myPlayer?.hasShield || !myPlayer?.alive}
-                            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2.5 font-bold text-white text-xs border-2 border-blue-500/50 shadow-lg hover:shadow-blue-500/25 transition-all w-full"
+                            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed px-2 sm:px-3 py-2 sm:py-2.5 font-bold text-white text-[10px] sm:text-xs border-2 border-blue-500/50 shadow-lg hover:shadow-blue-500/25 transition-all flex-1 sm:w-full"
                         >
-                            <div className="flex flex-col items-center gap-1">
+                            <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                                 <div className="flex items-center gap-1">
-                                    <Shield className="w-4 h-4" />
-                                    <span>[2] SHIELD</span>
+                                    <Shield className="w-3 h-3 sm:w-4 sm:h-4" />
+                                    <span className="hidden sm:inline">[2] SHIELD</span>
+                                    <span className="sm:hidden">SHD</span>
                                 </div>
-                                <span className="text-xs opacity-75">({getShieldCost} vSOL)</span>
+                                <span className="text-[9px] sm:text-xs opacity-75">({getShieldCost})</span>
                             </div>
                         </Button>
 
                         <Button
                             onClick={() => buyPowerUp('health')}
                             disabled={virtualBalance < getHealthCost || !myPlayer || myPlayer.hp >= myPlayer.maxHp || !myPlayer?.alive}
-                            className="bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2.5 font-bold text-white text-xs border-2 border-pink-500/50 shadow-lg hover:shadow-pink-500/25 transition-all w-full"
+                            className="bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-2 sm:px-3 py-2 sm:py-2.5 font-bold text-white text-[10px] sm:text-xs border-2 border-pink-500/50 shadow-lg hover:shadow-pink-500/25 transition-all flex-1 sm:w-full"
                         >
-                            <div className="flex flex-col items-center gap-1">
+                            <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                                 <div className="flex items-center gap-1">
-                                    <Heart className="w-4 h-4" />
-                                    <span>[3] HEALTH</span>
+                                    <Heart className="w-3 h-3 sm:w-4 sm:h-4" />
+                                    <span className="hidden sm:inline">[3] HEALTH</span>
+                                    <span className="sm:hidden">HP</span>
                                 </div>
-                                <span className="text-xs opacity-75">({getHealthCost} vSOL)</span>
+                                <span className="text-[9px] sm:text-xs opacity-75">({getHealthCost})</span>
                             </div>
                         </Button>
                     </div>
                 </div>
             </div>
 
-            {/* Game Canvas - RESPONSIVE SIZE */}
-            <div className="flex items-start justify-center min-h-screen pt-24 pb-8 px-4">
-                <div className="bg-gradient-to-br from-black/90 to-red-950/40 backdrop-blur-xl border-4 border-red-600/60 rounded-2xl p-4 shadow-2xl shadow-red-900/70 relative overflow-hidden w-full max-w-[920px]">
-                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-600 via-orange-500 to-red-600 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 w-full h-2 bg-gradient-to-r from-red-600 via-orange-500 to-red-600 animate-pulse"></div>
+            {/* Game Canvas - MOBILE FRIENDLY */}
+            <div className="flex items-start justify-center min-h-screen pt-16 sm:pt-24 pb-20 sm:pb-8 px-2 sm:px-4">
+                <div className="bg-gradient-to-br from-black/90 to-red-950/40 backdrop-blur-xl border-2 sm:border-4 border-red-600/60 rounded-xl sm:rounded-2xl p-2 sm:p-4 shadow-2xl shadow-red-900/70 relative overflow-hidden w-full max-w-[920px]">
+                    <div className="absolute top-0 left-0 w-full h-1 sm:h-2 bg-gradient-to-r from-red-600 via-orange-500 to-red-600 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 w-full h-1 sm:h-2 bg-gradient-to-r from-red-600 via-orange-500 to-red-600 animate-pulse"></div>
 
                     <canvas
                         ref={canvasRef}
                         width={900}
                         height={700}
-                        className="rounded-xl cursor-none bg-black border-2 border-red-500/50 shadow-inner w-full h-auto"
+                        className="rounded-lg sm:rounded-xl cursor-none touch-none bg-black border border-red-500/50 sm:border-2 shadow-inner w-full h-auto"
                         style={{ aspectRatio: '900/700', maxWidth: '100%', display: 'block' }}
                     />
-                    <div className="text-center mt-3 text-red-300 text-xs sm:text-sm font-semibold tracking-wide animate-pulse">
-                        💀 DEATH ARENA ACTIVE • SURVIVE AT ALL COSTS 💀
+                    <div className="text-center mt-2 sm:mt-3 text-red-300 text-[10px] sm:text-sm font-semibold tracking-wide animate-pulse">
+                        💀 SURVIVE • ZONE: {Math.round(safeZone.radius)}m 💀
                     </div>
                 </div>
             </div>
