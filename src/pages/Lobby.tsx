@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Clock, Trophy, TrendingUp, Play, UserPlus, Eye, Crown, Zap, Calendar, Timer, Plus, RefreshCw, AlertCircle, XCircle, Search, Filter, ArrowUpDown } from 'lucide-react';
+import { ArrowLeft, Users, Clock, Trophy, TrendingUp, Play, UserPlus, Eye, Crown, Zap, Calendar, Timer, Plus, RefreshCw, AlertCircle, XCircle, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Coins } from 'lucide-react';
 import ParticleBackground from "../components/ParticleBackground";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -22,18 +22,34 @@ interface ButtonProps {
   style?: React.CSSProperties;
 }
 
-// Helper to normalize status (handles both string and object formats from Solana)
+// Helper to normalize status
 const normalizeStatus = (status: any): string => {
   if (typeof status === 'string') return status;
   if (typeof status === 'object' && status !== null) {
     const keys = Object.keys(status);
     if (keys.length > 0) {
-      // Convert camelCase/lowercase to PascalCase
       const key = keys[0];
       return key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1').trim().replace(/ /g, '');
     }
   }
   return 'Unknown';
+};
+
+// Status priority for sorting
+const getStatusPriority = (status: string): number => {
+  const normalized = normalizeStatus(status);
+  switch (normalized) {
+    case 'WaitingForPlayers':
+    case 'Waitingforplayers': return 1;
+    case 'InProgress':
+    case 'Inprogress': return 2;
+    case 'Expired': return 3;
+    case 'Cancelled': return 4;
+    case 'Expiredwithpenalty':
+    case 'ExpiredWithPenalty': return 5;
+    case 'Completed': return 6;
+    default: return 7;
+  }
 };
 
 function Button({ children, onClick, variant = 'primary', size = 'md', className = '', disabled = false, style = {} }: ButtonProps) {
@@ -89,68 +105,6 @@ function Card({ children, className = '', style = {} }: CardProps) {
   );
 }
 
-// Ready Check Modal Component (inline)
-interface ReadyCheckModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  gameTitle: string;
-}
-
-function ReadyCheckModal({ isOpen, onClose, onConfirm, gameTitle }: ReadyCheckModalProps) {
-  const [isReady, setIsReady] = useState(false);
-  const [countdown, setCountdown] = useState(10);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="max-w-md w-full p-8 text-center">
-        <div className="mb-6">
-          <Crown className="w-16 h-16 text-sol-orange mx-auto mb-4 animate-pulse" />
-          <h2 className="text-2xl font-bold mb-2 gradient-text">Joining Battle</h2>
-          <p className="text-muted-foreground">{gameTitle}</p>
-        </div>
-
-        <div className="mb-8">
-          <div className="text-6xl font-bold text-sol-orange mb-2">{countdown}</div>
-          <p className="text-sm text-muted-foreground">seconds to confirm</p>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-center gap-3 p-4 rounded-lg border border-border/50">
-            <input
-              type="checkbox"
-              id="ready-check"
-              checked={isReady}
-              onChange={(e) => setIsReady(e.target.checked)}
-              className="w-5 h-5 accent-sol-orange"
-            />
-            <label htmlFor="ready-check" className="text-lg font-medium">
-              I'm ready to battle!
-            </label>
-          </div>
-
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              Cancel
-            </Button>
-            <Button
-              variant="sol"
-              onClick={onConfirm}
-              disabled={!isReady}
-              className="flex-1"
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              Let's Fight!
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
 export default function Lobby() {
   const navigate = useNavigate();
   const wallet = useWallet();
@@ -158,30 +112,64 @@ export default function Lobby() {
   const { toast } = useToast();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
-  const [showReadyCheck, setShowReadyCheck] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGameDetailsModal, setShowGameDetailsModal] = useState(false);
   const [createGameParams, setCreateGameParams] = useState({
     gameName: '',
     entryFee: 1,
     maxPlayers: 10,
-    startTime: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now (minimum)
-    gameDurationHours: 2, // Default 2 ore
+    startTime: new Date(Date.now() + 30 * 60 * 1000),
+    gameDurationHours: 2,
   });
 
   // Filtering and sorting state
   const [searchQuery, setSearchQuery] = useState('');
   const [showYourGames, setShowYourGames] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'entryFee' | 'players' | 'startTime' | 'prizePool'>('startTime');
+  const [sortBy, setSortBy] = useState<'entryFee' | 'players' | 'startTime' | 'prizePool' | 'status'>('status');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
   const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Calculate player statistics from completed games
+  const playerStats = (() => {
+    const stats = new Map<string, { wins: number; earnings: number; gamesPlayed: number }>();
+
+    solanaGame.games.forEach(game => {
+      game.players.forEach(player => {
+        if (!stats.has(player)) {
+          stats.set(player, { wins: 0, earnings: 0, gamesPlayed: 0 });
+        }
+        const playerStat = stats.get(player)!;
+        playerStat.gamesPlayed += 1;
+
+        // Check if this player won
+        if (normalizeStatus(game.status) === 'Completed' && game.phase3Winner === player) {
+          playerStat.wins += 1;
+          // Check if prize was claimed
+          if (game.phase3PrizeClaimed) {
+            playerStat.earnings += game.prizePool * 0.99; // 99% after fee
+          }
+        }
+      });
+    });
+
+    return stats;
+  })();
+
+  // Your personal stats
+  const yourStats = (() => {
+    const userAddress = wallet.publicKey?.toBase58();
+    if (!userAddress) return { wins: 0, earnings: 0 };
+
+    const stats = playerStats.get(userAddress);
+    return stats ? { wins: stats.wins, earnings: stats.earnings } : { wins: 0, earnings: 0 };
+  })();
+
   // Filter and sort games
   const filteredAndSortedGames = solanaGame.games
     .filter(game => {
-      // Search filter (by name, creator, or transaction)
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matchesName = game.name.toLowerCase().includes(query);
@@ -190,7 +178,6 @@ export default function Lobby() {
         if (!matchesName && !matchesCreator && !matchesTx) return false;
       }
 
-      // Your games filter
       if (showYourGames && wallet.publicKey) {
         const userAddress = wallet.publicKey.toBase58();
         const isCreator = game.creator === userAddress;
@@ -198,7 +185,6 @@ export default function Lobby() {
         if (!isCreator && !isPlayer) return false;
       }
 
-      // Status filter
       if (statusFilter !== 'all') {
         const normalized = normalizeStatus(game.status);
         if (statusFilter === 'active') {
@@ -213,17 +199,27 @@ export default function Lobby() {
       return true;
     })
     .sort((a, b) => {
+      let comparison = 0;
+
       switch (sortBy) {
+        case 'status':
+          comparison = getStatusPriority(a.status) - getStatusPriority(b.status);
+          break;
         case 'entryFee':
-          return b.entryFee - a.entryFee;
+          comparison = b.entryFee - a.entryFee;
+          break;
         case 'players':
-          return b.currentPlayers - a.currentPlayers;
+          comparison = b.currentPlayers - a.currentPlayers;
+          break;
         case 'prizePool':
-          return b.prizePool - a.prizePool;
+          comparison = b.prizePool - a.prizePool;
+          break;
         case 'startTime':
-        default:
-          return a.startTime.getTime() - b.startTime.getTime();
+          comparison = a.startTime.getTime() - b.startTime.getTime();
+          break;
       }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
     });
 
   // Fetch Solana price
@@ -241,34 +237,24 @@ export default function Lobby() {
       }
     };
     fetchSolPrice();
-    // Refresh price every 60 seconds
     const interval = setInterval(fetchSolPrice, 60000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    // Funcție pentru auto-refresh
     const performAutoRefresh = async () => {
       console.log('🔄 Auto-refresh triggered at', new Date().toLocaleTimeString());
-
       try {
-        // Apelează funcția de refresh existentă
         await solanaGame.fetchGames();
-
-        // Actualizează timestamp-ul ultimului refresh
         setLastAutoRefresh(new Date());
-
         console.log('✅ Auto-refresh completed successfully');
       } catch (error) {
         console.error('❌ Auto-refresh failed:', error);
-        // Nu afișăm toast pentru a nu deranja utilizatorul cu mesaje automate
       }
     };
 
-    // Setează intervalul de 40 secunde
     autoRefreshIntervalRef.current = setInterval(performAutoRefresh, 40000);
 
-    // Cleanup function - FOARTE IMPORTANT pentru a preveni memory leaks
     return () => {
       if (autoRefreshIntervalRef.current) {
         console.log('🧹 Cleaning up auto-refresh interval');
@@ -276,23 +262,18 @@ export default function Lobby() {
         autoRefreshIntervalRef.current = null;
       }
     };
-  }, [solanaGame.fetchGames]); // Dependency pe fetchGames
+  }, [solanaGame.fetchGames]);
 
-  // OPȚIONAL: Adaugă și un useEffect pentru a opri auto-refresh când utilizatorul nu e pe pagină
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Utilizatorul a schimbat tab-ul - oprește auto-refresh
         if (autoRefreshIntervalRef.current) {
           console.log('⏸️ Pausing auto-refresh (tab hidden)');
           clearInterval(autoRefreshIntervalRef.current);
           autoRefreshIntervalRef.current = null;
         }
       } else {
-        // Utilizatorul s-a întors pe tab - reporește auto-refresh
         console.log('▶️ Resuming auto-refresh (tab visible)');
-
-        // Reporește intervalul
         autoRefreshIntervalRef.current = setInterval(async () => {
           try {
             await solanaGame.fetchGames();
@@ -305,7 +286,6 @@ export default function Lobby() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -314,36 +294,22 @@ export default function Lobby() {
   // Statistici calculate din jocurile reale
   const stats = {
     totalGames: solanaGame.games.length,
-    activeGames: solanaGame.games.filter(g => g.status === 'WaitingForPlayers' || g.status === 'InProgress').length,
-    // Total distinct players across all games
+    activeGames: solanaGame.games.filter(g => {
+      const normalized = normalizeStatus(g.status);
+      return normalized === 'WaitingForPlayers' || normalized === 'InProgress';
+    }).length,
     totalPlayers: new Set(solanaGame.games.flatMap(game => game.players)).size,
     totalPrizePool: solanaGame.games.reduce((acc, game) => acc + game.prizePool, 0),
     totalPrizePoolUSD: solanaGame.games.reduce((acc, game) => acc + game.prizePool, 0) * solPrice,
-    yourWins: 0, // Winner tracking not available in current contract version
-    yourEarnings: 0 // Winner tracking not available in current contract version
+    yourWins: yourStats.wins,
+    yourEarnings: yourStats.earnings
   };
 
-  // Leaderboard data: top players by wins and earnings
-  const leaderboardData = (() => {
-    const playerStats = new Map<string, { wins: number; earnings: number; gamesPlayed: number }>();
-
-    solanaGame.games.forEach(game => {
-      game.players.forEach(player => {
-        if (!playerStats.has(player)) {
-          playerStats.set(player, { wins: 0, earnings: 0, gamesPlayed: 0 });
-        }
-        const stats = playerStats.get(player)!;
-        stats.gamesPlayed += 1;
-      });
-    });
-
-    return Array.from(playerStats.entries())
-      .map(([player, stats]) => ({ player, ...stats }))
-      .sort((a, b) => b.earnings - a.earnings)
-      .slice(0, 10);
-  })();
-
-
+  // Leaderboard data: top 10 players by earnings
+  const leaderboardData = Array.from(playerStats.entries())
+    .map(([player, stats]) => ({ player, ...stats }))
+    .sort((a, b) => b.earnings - a.earnings)
+    .slice(0, 10);
 
   const getStatusColor = (status: string) => {
     const normalized = normalizeStatus(status);
@@ -363,23 +329,16 @@ export default function Lobby() {
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'WaitingForPlayers': return <Clock className="w-4 h-4" />;
+    const normalized = normalizeStatus(status);
+    switch (normalized) {
+      case 'WaitingForPlayers':
+      case 'Waitingforplayers': return <Clock className="w-4 h-4" />;
       case 'ReadyToStart': return <Crown className="w-4 h-4" />;
-      case 'InProgress': return <Play className="w-4 h-4" />;
+      case 'InProgress':
+      case 'Inprogress': return <Play className="w-4 h-4" />;
       case 'Completed': return <Trophy className="w-4 h-4" />;
-      case 'Cancelled': return <Users className="w-4 h-4" />;
+      case 'Cancelled': return <XCircle className="w-4 h-4" />;
       default: return <Users className="w-4 h-4" />;
-    }
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Easy': return 'text-green-400 bg-green-400/20';
-      case 'Medium': return 'text-yellow-400 bg-yellow-400/20';
-      case 'Hard': return 'text-orange-400 bg-orange-400/20';
-      case 'Extreme': return 'text-red-400 bg-red-400/20';
-      default: return 'text-muted-foreground bg-muted/20';
     }
   };
 
@@ -390,11 +349,8 @@ export default function Lobby() {
 
   const handleConfirmJoinGame = async () => {
     console.log('🎮 Enter the Game button clicked!');
-    console.log('🎯 Selected game:', selectedGame);
-    console.log('🔗 Wallet connected:', wallet.connected);
-
     if (!selectedGame || !wallet.connected) {
-      console.error('❌ Missing requirements:', { selectedGame: !!selectedGame, walletConnected: wallet.connected });
+      console.error('❌ Missing requirements');
       return;
     }
 
@@ -403,24 +359,34 @@ export default function Lobby() {
       const result = await solanaGame.enterGame(selectedGame.gameId);
 
       if (result === 'already_processed') {
-        console.log('🎉 Join was already successful! Closing modal...');
+        console.log('🎉 Join was already successful!');
+        toast({
+          title: "Already Joined",
+          description: "You've already entered this game successfully!",
+        });
       } else {
         console.log('✅ Successfully joined game!');
       }
 
+      // Refresh games and close modal
+      await solanaGame.fetchGames();
       setShowGameDetailsModal(false);
       setSelectedGame(null);
-      console.log('🔄 Modal closed and state reset');
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to join game:', error);
-      // Modal rămâne deschis ca să poată încerca din nou
+      // Only show error if it's not an "already processed" error
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to join game",
+          description: error.message || "Unknown error",
+        });
+      }
     }
   };
 
   const handleStartGame = async () => {
-    if (!selectedGame || !wallet.connected) {
-      return;
-    }
+    if (!selectedGame || !wallet.connected) return;
 
     try {
       console.log('🚀 Starting game:', selectedGame.gameId);
@@ -432,23 +398,24 @@ export default function Lobby() {
           title: "Game Started",
           description: "Players can now initialize their game states in Phase 1",
         });
+        await solanaGame.fetchGames();
         setShowGameDetailsModal(false);
         setSelectedGame(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to start game:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to start game",
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to start game",
+          description: error.message || "Unknown error",
+        });
+      }
     }
   };
 
   const handleClaimRefund = async () => {
-    if (!selectedGame || !wallet.connected) {
-      return;
-    }
+    if (!selectedGame || !wallet.connected) return;
 
     try {
       console.log('💰 Claiming refund for game:', selectedGame.gameId);
@@ -456,18 +423,53 @@ export default function Lobby() {
 
       if (result === 'already_processed' || result) {
         console.log('✅ Refund claimed successfully!');
+        await solanaGame.fetchGames();
         setShowGameDetailsModal(false);
         setSelectedGame(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to claim refund:', error);
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to claim refund",
+          description: error.message || "Unknown error",
+        });
+      }
+    }
+  };
+
+  const handleClaimPrize = async () => {
+    if (!selectedGame || !wallet.connected) return;
+
+    try {
+      console.log('🏆 Claiming prize for game:', selectedGame.gameId);
+      const result = await solanaGame.claimPhase3Prize(selectedGame.gameId);
+
+      if (result === 'already_processed' || result) {
+        console.log('✅ Prize claimed successfully!');
+        toast({
+          title: "Prize Claimed!",
+          description: `You've claimed ${(selectedGame.prizePool * 0.99).toFixed(4)} SOL!`,
+        });
+        await solanaGame.fetchGames();
+        setShowGameDetailsModal(false);
+        setSelectedGame(null);
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to claim prize:', error);
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to claim prize",
+          description: error.message || "Unknown error",
+        });
+      }
     }
   };
 
   const handleCreatorCancel = async () => {
-    if (!selectedGame || !wallet.connected) {
-      return;
-    }
+    if (!selectedGame || !wallet.connected) return;
 
     try {
       console.log('🚫 Cancelling game:', selectedGame.gameId);
@@ -475,48 +477,30 @@ export default function Lobby() {
 
       if (result === 'already_processed' || result) {
         console.log('✅ Game cancelled successfully!');
+        await solanaGame.fetchGames();
         setShowGameDetailsModal(false);
         setSelectedGame(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to cancel game:', error);
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to cancel game",
+          description: error.message || "Unknown error",
+        });
+      }
     }
   };
 
   const handleGameCardClick = (game: Game) => {
     console.log('🎯 Game card clicked:', game);
-    console.log('📝 Setting selected game and showing modal');
     setSelectedGame(game);
     setShowGameDetailsModal(true);
   };
 
-  // Debugging effect
-  useEffect(() => {
-    if (showGameDetailsModal && selectedGame) {
-      console.log('🔍 Modal open with game:', selectedGame);
-      console.log('👤 Current wallet:', wallet.publicKey?.toBase58());
-      console.log('🎮 Players in game:', selectedGame.players);
-      console.log('✅ Is user in game?', selectedGame.players.includes(wallet.publicKey?.toBase58() || ''));
-      console.log('🎯 Game status:', selectedGame.status);
-      console.log('🔗 Wallet connected:', wallet.connected);
-    }
-  }, [showGameDetailsModal, selectedGame, wallet.publicKey, wallet.connected]);
-
-  const handleReadyConfirm = async () => {
-    if (selectedGameId) {
-      const game = solanaGame.games.find(g => g.gameId === selectedGameId);
-      if (game) {
-        await handleJoinGame(game);
-      }
-    }
-    setShowReadyCheck(false);
-    setSelectedGameId(null);
-  };
-
   const handleStartNewGame = () => {
-    if (!wallet.connected) {
-      return; // Let them click the connect wallet button in the nav
-    }
+    if (!wallet.connected) return;
     setShowCreateModal(true);
   };
 
@@ -526,7 +510,11 @@ export default function Lobby() {
 
       if (result === 'already_processed' || result) {
         console.log('✅ Game created successfully!');
-        setShowCreateModal(false);
+        toast({
+          title: "Game Created!",
+          description: "Your game has been created successfully",
+        });
+
         // Reset form
         setCreateGameParams({
           gameName: '',
@@ -535,10 +523,22 @@ export default function Lobby() {
           startTime: new Date(Date.now() + 30 * 60 * 1000),
           gameDurationHours: 2,
         });
+
+        // Close modal
+        setShowCreateModal(false);
+
+        // Refresh games list
+        await solanaGame.fetchGames();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to create game:', error);
-      // Don't close modal on error so user can try again or fix parameters
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to create game",
+          description: error.message || "Unknown error",
+        });
+      }
     }
   };
 
@@ -620,8 +620,10 @@ export default function Lobby() {
             backdropFilter: 'blur(10px)',
             boxShadow: '0 8px 25px hsla(120, 100%, 50%, 0.2)'
           }}>
-            <div className="text-2xl font-bold" style={{ color: 'hsl(120, 80%, 50%)' }}>${stats.yourEarnings}</div>
-            <div className="text-xs" style={{ color: 'hsl(0, 0%, 70%)' }}>Earnings</div>
+            <div className="text-2xl font-bold" style={{ color: 'hsl(120, 80%, 50%)' }}>
+              {stats.yourEarnings.toFixed(2)} SOL
+            </div>
+            <div className="text-xs" style={{ color: 'hsl(0, 0%, 70%)' }}>Your Earnings</div>
           </div>
         </div>
 
@@ -661,17 +663,19 @@ export default function Lobby() {
                     <div className="text-sm font-medium truncate" style={{ color: 'hsl(0, 0%, 90%)' }}>
                       {player.player.slice(0, 4)}...{player.player.slice(-4)}
                     </div>
-                    <div className="text-xs" style={{ color: 'hsl(0, 0%, 60%)' }}>
-                      {player.gamesPlayed} games played
+                    <div className="text-xs flex items-center gap-2" style={{ color: 'hsl(0, 0%, 60%)' }}>
+                      <Trophy className="w-3 h-3" />
+                      {player.wins} {player.wins === 1 ? 'win' : 'wins'} • {player.gamesPlayed} games
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <div className="text-sm font-bold" style={{ color: 'hsl(50, 100%, 60%)' }}>
-                      {player.wins} {player.wins === 1 ? 'win' : 'wins'}
+                    <div className="text-sm font-bold flex items-center gap-1" style={{ color: 'hsl(50, 100%, 60%)' }}>
+                      <Coins className="w-4 h-4" />
+                      {player.earnings.toFixed(2)} SOL
                     </div>
                     <div className="text-xs" style={{ color: 'hsl(0, 0%, 70%)' }}>
-                      {player.earnings.toFixed(2)} SOL
+                      Total Claimed
                     </div>
                   </div>
                 </div>
@@ -691,12 +695,6 @@ export default function Lobby() {
               boxShadow: '0 10px 30px hsla(280, 100%, 35%, 0.4)',
               border: 'none'
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 15px 40px hsla(15, 100%, 50%, 0.6)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '0 10px 30px hsla(280, 100%, 35%, 0.4)';
-            }}
           >
             <Plus className="w-5 h-5" />
             Create New Game
@@ -711,14 +709,6 @@ export default function Lobby() {
               border: '2px solid hsl(15, 100%, 50%)',
               boxShadow: 'none'
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'hsl(15, 100%, 50%)';
-              e.currentTarget.style.color = 'white';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'hsl(15, 100%, 50%)';
-            }}
           >
             <RefreshCw className={`w-5 h-5 ${solanaGame.loading ? 'animate-spin' : ''}`} />
             Refresh Games
@@ -728,7 +718,6 @@ export default function Lobby() {
         {/* Filters and Search */}
         <div className="mb-8 space-y-4">
           <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search Bar */}
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
@@ -745,7 +734,6 @@ export default function Lobby() {
               />
             </div>
 
-            {/* Your Games Toggle */}
             <Button
               variant={showYourGames ? "sol" : "outline"}
               onClick={() => setShowYourGames(!showYourGames)}
@@ -756,7 +744,6 @@ export default function Lobby() {
             </Button>
           </div>
 
-          {/* Status Filter and Sort */}
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-muted-foreground" />
@@ -789,6 +776,7 @@ export default function Lobby() {
                   color: 'hsl(0, 0%, 90%)'
                 }}
               >
+                <option value="status">Sort by Status</option>
                 <option value="startTime">Sort by Start Time</option>
                 <option value="entryFee">Sort by Entry Fee</option>
                 <option value="players">Sort by Players</option>
@@ -796,9 +784,21 @@ export default function Lobby() {
               </select>
             </div>
 
+            <button
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="px-4 py-2 rounded-lg backdrop-blur-sm flex items-center gap-2 transition-colors"
+              style={{
+                background: 'hsla(0, 0%, 10%, 0.5)',
+                border: '1px solid hsla(280, 100%, 35%, 0.3)',
+                color: 'hsl(0, 0%, 90%)'
+              }}
+            >
+              {sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+              {sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+            </button>
+
             <div className="flex-1" />
 
-            {/* Results count */}
             <div className="px-4 py-2 rounded-lg backdrop-blur-sm" style={{
               background: 'hsla(280, 100%, 35%, 0.1)',
               border: '1px solid hsla(280, 100%, 35%, 0.2)',
@@ -840,232 +840,160 @@ export default function Lobby() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredAndSortedGames.map((game) => (
-              <div
-                key={game.gameId}
-                className="cursor-pointer transition-all duration-300 hover:scale-105 h-full"
-                onClick={() => handleGameCardClick(game)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <Card className="p-6 h-full flex flex-col" style={{
-                  minHeight: '320px',
-                  borderColor: game.status === 'WaitingForPlayers' ? 'hsla(50, 100%, 50%, 0.4)' :
-                    game.status === 'InProgress' ? 'hsla(15, 100%, 50%, 0.4)' :
-                      'hsla(120, 100%, 50%, 0.4)',
-                  boxShadow: `0 10px 30px ${game.status === 'WaitingForPlayers' ? 'hsla(50, 100%, 50%, 0.2)' :
-                    game.status === 'InProgress' ? 'hsla(15, 100%, 50%, 0.2)' :
-                      'hsla(120, 100%, 50%, 0.2)'}`
-                }}>
-                  {/* Game Header */}
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold mb-1" style={{ color: 'white' }}>{game.name}</h3>
-                      <p className="text-xs" style={{ color: 'hsl(0, 0%, 50%)' }}>
-                        TX: {game.txSignature ? `${game.txSignature.slice(0, 8)}...${game.txSignature.slice(-8)}` : 'N/A'}
-                      </p>
-                    </div>
-                    <div className={`flex items-center gap-1 text-sm font-medium ${getStatusColor(game.status)}`}>
-                      {getStatusIcon(game.status)}
-                      <span className="capitalize">{game.status.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </div>
-                  </div>
+            {filteredAndSortedGames.map((game) => {
+              const isCompleted = normalizeStatus(game.status) === 'Completed';
+              const isWinner = isCompleted && game.phase3Winner === wallet.publicKey?.toBase58();
+              const canClaimPrize = isWinner && !game.phase3PrizeClaimed;
 
-                  {/* Game Stats */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4" style={{ color: 'hsl(200, 100%, 60%)' }} />
-                      <span className="text-sm" style={{ color: 'hsl(0, 0%, 80%)' }}>
-                        {game.currentPlayers}/{game.maxPlayers}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-4 h-4" style={{ color: 'hsl(50, 100%, 60%)' }} />
-                      <span className="text-sm font-medium" style={{ color: 'hsl(50, 100%, 60%)' }}>
-                        {game.prizePool} SOL
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Zap className="w-4 h-4" style={{ color: 'hsl(280, 100%, 60%)' }} />
-                      <span className="text-sm" style={{ color: 'hsl(0, 0%, 80%)' }}>{game.entryFee.toFixed(2)} SOL</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {game.status === 'WaitingForPlayers' && (
-                        <>
-                          {Date.now() < game.startTime.getTime() ? (
-                            <CountdownTimer targetTime={game.startTime} />
-                          ) : Date.now() < game.expireTime.getTime() ? (
-                            game.currentPlayers >= 3 ? (
-                              <>
-                                <Timer className="w-4 h-4 animate-pulse" style={{ color: 'hsl(50, 100%, 60%)' }} />
-                                <span className="text-xs" style={{ color: 'hsl(50, 100%, 50%)' }}>Ready</span>
-                              </>
-                            ) : (
-                              <>
-                                <AlertCircle className="w-4 h-4" style={{ color: 'hsl(30, 100%, 60%)' }} />
-                                <span className="text-xs" style={{ color: 'hsl(30, 100%, 50%)' }}>Need players</span>
-                              </>
-                            )
-                          ) : (
-                            <>
-                              <Clock className="w-4 h-4" style={{ color: 'hsl(0, 100%, 60%)' }} />
-                              <span className="text-xs" style={{ color: 'hsl(0, 100%, 50%)' }}>Expired</span>
-                            </>
-                          )}
-                        </>
-                      )}
-                      {game.status === 'InProgress' && (
-                        <>
-                          <Clock className="w-4 h-4" style={{ color: 'hsl(15, 100%, 60%)' }} />
-                          <span className="text-sm" style={{ color: 'hsl(15, 100%, 50%)' }}>In Progress</span>
-                        </>
-                      )}
-                      {game.status === 'Completed' && (
-                        <>
-                          <Calendar className="w-4 h-4" style={{ color: 'hsl(120, 80%, 60%)' }} />
-                          <span className="text-sm" style={{ color: 'hsl(120, 80%, 50%)' }}>
-                            Completed
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Start Time Display */}
-                  <div className="mb-4">
-                    <span
-                      className="inline-block px-3 py-1 rounded-full text-xs font-medium"
-                      style={{
-                        backgroundColor: 'hsla(280, 100%, 35%, 0.2)',
-                        color: 'hsl(280, 100%, 60%)',
-                        border: '1px solid hsl(280, 100%, 35%)'
-                      }}
-                    >
-                      Starts: {game.startTime.toLocaleDateString()}
-                    </span>
-                  </div>
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    {normalizeStatus(game.status) === 'WaitingForPlayers' && (
-                      <button
-                        className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                        onClick={() => handleJoinGame(game)}
-                        style={{
-                          background: 'linear-gradient(135deg, hsl(280, 100%, 35%), hsl(15, 100%, 50%))',
-                          color: 'white',
-                          border: 'none',
-                          boxShadow: '0 5px 15px hsla(280, 100%, 35%, 0.4)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.boxShadow = '0 8px 25px hsla(15, 100%, 50%, 0.6)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.boxShadow = '0 5px 15px hsla(280, 100%, 35%, 0.4)';
-                        }}
-                      >
-                        <UserPlus className="w-4 h-4" />
-                        Join Battle
-                      </button>
-                    )}
-                    {normalizeStatus(game.status) === 'InProgress' && (
-                      <>
-                        {wallet.publicKey && game.players.includes(wallet.publicKey.toBase58()) ? (
-                          <button
-                            className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-
-                              // 🔥 Include toate fazele
-                              let targetPhase = 'phase1';
-                              if (game.currentPhase === 2) targetPhase = 'phase2';
-                              else if (game.currentPhase === 3) targetPhase = 'phase3';
-
-                              console.log(`🎮 Navigating to ${targetPhase} for gameId:`, game.gameId);
-                              navigate(`/${targetPhase}?gameId=${game.gameId}`);
-                            }}
-                            style={{
-                              background: 'linear-gradient(135deg, hsl(120, 100%, 35%), hsl(150, 100%, 40%))',
-                              color: 'white',
-                              border: 'none',
-                              boxShadow: '0 5px 15px hsla(120, 100%, 35%, 0.4)'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.boxShadow = '0 8px 25px hsla(150, 100%, 40%, 0.6)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.boxShadow = '0 5px 15px hsla(120, 100%, 35%, 0.4)';
-                            }}
-                          >
-                            <Play className="w-4 h-4" />
-                            Resume Game
-                          </button>
-                        ) : (
-                          <button
-                            className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2"
-                            disabled
-                            style={{
-                              background: 'transparent',
-                              color: 'hsl(0, 0%, 50%)',
-                              border: '1px solid hsl(0, 0%, 30%)',
-                              cursor: 'not-allowed'
-                            }}
-                          >
-                            <Eye className="w-4 h-4" />
-                            Watch Live
-                          </button>
-                        )}
-                      </>
-                    )}
-                    {normalizeStatus(game.status) === 'Completed' && (
-                      <button
-                        className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                        style={{
-                          background: 'transparent',
-                          color: 'hsl(120, 80%, 50%)',
-                          border: '1px solid hsl(120, 80%, 50%)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'hsl(120, 80%, 50%)';
-                          e.currentTarget.style.color = 'white';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.color = 'hsl(120, 80%, 50%)';
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                        View Results
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Progress Bar for Waiting Games */}
-                  {normalizeStatus(game.status) === 'WaitingForPlayers' && (
-                    <div className="mt-4">
-                      <div className="w-full rounded-full h-2 overflow-hidden" style={{
-                        background: 'hsla(280, 100%, 35%, 0.2)'
-                      }}>
-                        <div
-                          className="h-2 rounded-full transition-all duration-500"
-                          style={{
-                            width: `${(game.currentPlayers / game.maxPlayers) * 100}%`,
-                            background: 'linear-gradient(90deg, hsl(280, 100%, 35%), hsl(15, 100%, 50%))',
-                            boxShadow: '0 0 10px hsla(280, 100%, 35%, 0.6)'
-                          }}
-                        ></div>
+              return (
+                <div
+                  key={game.gameId}
+                  className="cursor-pointer transition-all duration-300 hover:scale-105 h-full"
+                  onClick={() => handleGameCardClick(game)}
+                >
+                  <Card className="p-6 h-full flex flex-col" style={{
+                    minHeight: '320px',
+                    borderColor: isCompleted && game.phase3Winner ? 'hsla(50, 100%, 50%, 0.4)' :
+                      normalizeStatus(game.status) === 'WaitingForPlayers' ? 'hsla(50, 100%, 50%, 0.4)' :
+                        normalizeStatus(game.status) === 'InProgress' ? 'hsla(15, 100%, 50%, 0.4)' :
+                          'hsla(120, 100%, 50%, 0.4)',
+                    boxShadow: isCompleted && game.phase3Winner ? '0 10px 30px hsla(50, 100%, 50%, 0.3)' : undefined
+                  }}>
+                    {/* Game Header */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold mb-1" style={{ color: 'white' }}>{game.name}</h3>
+                        <p className="text-xs" style={{ color: 'hsl(0, 0%, 50%)' }}>
+                          TX: {game.txSignature ? `${game.txSignature.slice(0, 8)}...${game.txSignature.slice(-8)}` : 'N/A'}
+                        </p>
                       </div>
-                      <p className="text-xs mt-2 text-center" style={{ color: 'hsl(0, 0%, 60%)' }}>
-                        {game.maxPlayers - game.currentPlayers} spots remaining
-                      </p>
+                      <div className={`flex items-center gap-1 text-sm font-medium ${getStatusColor(game.status)}`}>
+                        {getStatusIcon(game.status)}
+                        <span className="capitalize">{normalizeStatus(game.status).replace(/([A-Z])/g, ' $1').trim()}</span>
+                      </div>
                     </div>
-                  )}
-                </Card>
-              </div>
-            ))}
+
+                    {/* Winner Display */}
+                    {isCompleted && game.phase3Winner && (
+                      <div className="mb-4 p-3 rounded-lg" style={{
+                        background: 'linear-gradient(135deg, hsla(50, 100%, 50%, 0.15), hsla(50, 100%, 60%, 0.05))',
+                        border: '1px solid hsla(50, 100%, 50%, 0.4)'
+                      }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Trophy className="w-5 h-5" style={{ color: 'hsl(50, 100%, 60%)' }} />
+                          <span className="text-sm font-bold" style={{ color: 'hsl(50, 100%, 60%)' }}>
+                            Winner
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono" style={{ color: 'hsl(0, 0%, 80%)' }}>
+                          {game.phase3Winner.slice(0, 8)}...{game.phase3Winner.slice(-8)}
+                        </div>
+                        <div className="text-xs mt-1" style={{ color: 'hsl(50, 100%, 50%)' }}>
+                          Prize: {(game.prizePool * 0.99).toFixed(4)} SOL
+                          {game.phase3PrizeClaimed && ' ✓ Claimed'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Game Stats */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4" style={{ color: 'hsl(200, 100%, 60%)' }} />
+                        <span className="text-sm" style={{ color: 'hsl(0, 0%, 80%)' }}>
+                          {game.currentPlayers}/{game.maxPlayers}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4" style={{ color: 'hsl(50, 100%, 60%)' }} />
+                        <span className="text-sm font-medium" style={{ color: 'hsl(50, 100%, 60%)' }}>
+                          {game.prizePool.toFixed(2)} SOL
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4" style={{ color: 'hsl(280, 100%, 60%)' }} />
+                        <span className="text-sm" style={{ color: 'hsl(0, 0%, 80%)' }}>{game.entryFee.toFixed(2)} SOL</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4" style={{ color: 'hsl(50, 100%, 60%)' }} />
+                        <span className="text-sm" style={{ color: 'hsl(50, 100%, 60%)' }}>
+                          {game.startTime.toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="mt-auto flex gap-2">
+                      {canClaimPrize && (
+                        <button
+                          className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClaimPrize();
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, hsl(50, 100%, 50%), hsl(50, 100%, 40%))',
+                            color: 'black',
+                            border: 'none',
+                            boxShadow: '0 5px 15px hsla(50, 100%, 50%, 0.4)'
+                          }}
+                        >
+                          <Trophy className="w-4 h-4" />
+                          Claim Prize
+                        </button>
+                      )}
+                      {normalizeStatus(game.status) === 'WaitingForPlayers' && !game.players.includes(wallet.publicKey?.toBase58() || '') && (
+                        <button
+                          className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
+                          style={{
+                            background: 'linear-gradient(135deg, hsl(280, 100%, 35%), hsl(15, 100%, 50%))',
+                            color: 'white',
+                            border: 'none',
+                            boxShadow: '0 5px 15px hsla(280, 100%, 35%, 0.4)'
+                          }}
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          Join Battle
+                        </button>
+                      )}
+                      {normalizeStatus(game.status) === 'InProgress' && wallet.publicKey && game.players.includes(wallet.publicKey.toBase58()) && (
+                        <button
+                          className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            let targetPhase = 'phase1';
+                            if (game.currentPhase === 2) targetPhase = 'phase2';
+                            else if (game.currentPhase === 3) targetPhase = 'phase3';
+                            navigate(`/${targetPhase}?gameId=${game.gameId}`);
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, hsl(120, 100%, 35%), hsl(150, 100%, 40%))',
+                            color: 'white',
+                            border: 'none',
+                            boxShadow: '0 5px 15px hsla(120, 100%, 35%, 0.4)'
+                          }}
+                        >
+                          <Play className="w-4 h-4" />
+                          Resume Game
+                        </button>
+                      )}
+                      {isCompleted && !canClaimPrize && (
+                        <button
+                          className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2"
+                          style={{
+                            background: 'transparent',
+                            color: 'hsl(120, 80%, 50%)',
+                            border: '1px solid hsl(120, 80%, 50%)'
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Results
+                        </button>
+                      )}
+                    </div>
+                  </Card>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -1158,7 +1086,7 @@ export default function Lobby() {
                     }}
                   />
                   <p className="text-xs mt-1" style={{ color: 'hsl(0, 0%, 60%)' }}>
-                    Your timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone} • Minimum 30 minutes from now
+                    Minimum 30 minutes from now
                   </p>
                 </div>
               </div>
@@ -1176,7 +1104,7 @@ export default function Lobby() {
                     cursor: !createGameParams.gameName.trim() ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  Create Game
+                  {solanaGame.loading ? 'Creating...' : 'Create Game'}
                 </button>
                 <button
                   onClick={() => setShowCreateModal(false)}
@@ -1202,48 +1130,35 @@ export default function Lobby() {
                 <div className="flex-1 pr-4">
                   <h2 className="text-2xl font-bold mb-1" style={{ color: 'white' }}>{selectedGame.name}</h2>
                   <p className="text-xs break-all" style={{ color: 'hsl(0, 0%, 50%)' }}>
-                    TX: {selectedGame.txSignature ? `${selectedGame.txSignature.slice(0, Math.min(20, Math.floor(window.innerWidth / 25)))}...${selectedGame.txSignature.slice(-8)}` : 'N/A'}
+                    TX: {selectedGame.txSignature ? `${selectedGame.txSignature.slice(0, 20)}...${selectedGame.txSignature.slice(-8)}` : 'N/A'}
                   </p>
                 </div>
                 <div className={`flex items-center gap-1 text-sm font-medium ${getStatusColor(selectedGame.status)}`}>
                   {getStatusIcon(selectedGame.status)}
-                  <span className="capitalize">{selectedGame.status.replace(/([A-Z])/g, ' $1').trim()}</span>
+                  <span className="capitalize">{normalizeStatus(selectedGame.status).replace(/([A-Z])/g, ' $1').trim()}</span>
                 </div>
               </div>
 
-              {/* Game Status Display */}
-              {selectedGame.status === 'WaitingForPlayers' && (
-                <div className="mb-4 p-3 rounded-lg text-center" style={{
-                  background: 'linear-gradient(135deg, hsla(50, 100%, 50%, 0.15), hsla(280, 100%, 35%, 0.1))',
-                  border: '1px solid hsla(50, 100%, 50%, 0.3)'
+              {/* Winner Display in Modal */}
+              {normalizeStatus(selectedGame.status) === 'Completed' && selectedGame.phase3Winner && (
+                <div className="mb-4 p-4 rounded-lg" style={{
+                  background: 'linear-gradient(135deg, hsla(50, 100%, 50%, 0.2), hsla(50, 100%, 60%, 0.1))',
+                  border: '2px solid hsla(50, 100%, 50%, 0.5)'
                 }}>
-                  {Date.now() < selectedGame.startTime.getTime() ? (
-                    <CountdownTimer targetTime={selectedGame.startTime} className="justify-center text-lg" />
-                  ) : Date.now() < selectedGame.expireTime.getTime() ? (
-                    selectedGame.currentPlayers >= 3 ? (
-                      <div className="flex items-center justify-center gap-2 text-yellow-400">
-                        <Timer className="w-5 h-5 animate-pulse" />
-                        <span className="text-sm font-medium">Waiting for creator to start...</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2 text-orange-400">
-                        <AlertCircle className="w-5 h-5" />
-                        <span className="text-sm font-medium">Not enough players - Claim refund</span>
-                      </div>
-                    )
-                  ) : (
-                    selectedGame.currentPlayers >= 3 ? (
-                      <div className="flex items-center justify-center gap-2 text-red-400">
-                        <Clock className="w-5 h-5" />
-                        <span className="text-sm font-medium">Expired - Everyone can claim refunds</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2 text-red-400">
-                        <Clock className="w-5 h-5" />
-                        <span className="text-sm font-medium">Expired - Claim your refund</span>
-                      </div>
-                    )
-                  )}
+                  <div className="flex items-center gap-2 mb-3">
+                    <Trophy className="w-6 h-6" style={{ color: 'hsl(50, 100%, 60%)' }} />
+                    <span className="text-lg font-bold" style={{ color: 'hsl(50, 100%, 60%)' }}>
+                      Winner Declared!
+                    </span>
+                  </div>
+                  <div className="text-sm font-mono mb-2" style={{ color: 'hsl(0, 0%, 90%)' }}>
+                    {selectedGame.phase3Winner.slice(0, 12)}...{selectedGame.phase3Winner.slice(-12)}
+                  </div>
+                  <div className="text-sm" style={{ color: 'hsl(50, 100%, 50%)' }}>
+                    Prize: {(selectedGame.prizePool * 0.99).toFixed(4)} SOL
+                    {selectedGame.phase3PrizeClaimed && ' ✓ Claimed'}
+                    {!selectedGame.phase3PrizeClaimed && ' (Unclaimed)'}
+                  </div>
                 </div>
               )}
 
@@ -1279,7 +1194,7 @@ export default function Lobby() {
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-3" style={{ color: 'white' }}>Players in Game</h3>
                 <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {selectedGame.players.map((player, index) => (
+                  {selectedGame.players.map((player) => (
                     <div
                       key={player}
                       className="flex items-center justify-between p-2 rounded"
@@ -1319,30 +1234,47 @@ export default function Lobby() {
                           You
                         </span>
                       )}
-                    </div>
-                  ))}
-
-                  {/* Empty slots */}
-                  {Array.from({ length: selectedGame.maxPlayers - selectedGame.currentPlayers }).map((_, index) => (
-                    <div
-                      key={`empty-${index}`}
-                      className="flex items-center gap-2 p-2 rounded border-dashed border"
-                      style={{
-                        borderColor: 'hsla(0, 0%, 50%, 0.3)',
-                        color: 'hsl(0, 0%, 50%)'
-                      }}
-                    >
-                      <div className="w-3 h-3 rounded-full border border-dashed" style={{ borderColor: 'hsl(0, 0%, 50%)' }}></div>
-                      <span className="text-sm">Waiting for player...</span>
+                      {player === selectedGame.phase3Winner && (
+                        <span
+                          className="text-xs px-2 py-1 rounded flex items-center gap-1"
+                          style={{
+                            background: 'hsl(50, 100%, 60%)',
+                            color: 'black'
+                          }}
+                        >
+                          <Trophy className="w-3 h-3" />
+                          Winner
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3">
-                {/* Join button - only if not in game and before start time */}
-                {selectedGame.status === 'WaitingForPlayers' &&
+              <div className="flex gap-3 flex-wrap">
+                {/* Claim Prize Button */}
+                {normalizeStatus(selectedGame.status) === 'Completed' &&
+                  selectedGame.phase3Winner === wallet.publicKey?.toBase58() &&
+                  !selectedGame.phase3PrizeClaimed && (
+                    <button
+                      onClick={handleClaimPrize}
+                      disabled={solanaGame.loading}
+                      className="flex-1 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                      style={{
+                        background: 'linear-gradient(135deg, hsl(50, 100%, 50%), hsl(50, 100%, 40%))',
+                        color: 'black',
+                        border: 'none',
+                        boxShadow: '0 5px 15px hsla(50, 100%, 50%, 0.4)'
+                      }}
+                    >
+                      <Trophy className="w-4 h-4" />
+                      {solanaGame.loading ? 'Claiming...' : `Claim Prize (${(selectedGame.prizePool * 0.99).toFixed(4)} SOL)`}
+                    </button>
+                  )}
+
+                {/* Join Button */}
+                {normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
                   !selectedGame.players.includes(wallet.publicKey?.toBase58() || '') &&
                   Date.now() < selectedGame.startTime.getTime() && (
                     <button
@@ -1360,9 +1292,9 @@ export default function Lobby() {
                     </button>
                   )}
 
-                {/* Start button - only for creator after start time and before expire time */}
-                {(selectedGame.status === 'WaitingForPlayers' ||
-                  selectedGame.status === 'ReadyToStart') &&
+                {/* Start Button */}
+                {(normalizeStatus(selectedGame.status) === 'WaitingForPlayers' ||
+                  normalizeStatus(selectedGame.status) === 'ReadyToStart') &&
                   selectedGame.creator === wallet.publicKey?.toBase58() &&
                   Date.now() >= selectedGame.startTime.getTime() &&
                   Date.now() < selectedGame.expireTime.getTime() &&
@@ -1383,8 +1315,8 @@ export default function Lobby() {
                     </button>
                   )}
 
-                {/* Cancel button - for creator with < 3 players after start time */}
-                {selectedGame.status === 'WaitingForPlayers' &&
+                {/* Cancel Button */}
+                {normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
                   selectedGame.creator === wallet.publicKey?.toBase58() &&
                   Date.now() >= selectedGame.startTime.getTime() &&
                   Date.now() < selectedGame.expireTime.getTime() &&
@@ -1406,38 +1338,19 @@ export default function Lobby() {
                     </button>
                   )}
 
-                {/* Refund button - for players in cancelled/expired games who haven't claimed yet */}
+                {/* Refund Button */}
                 {(() => {
-                  const normalizedStatus = normalizeStatus(selectedGame.status);
+                  const normalized = normalizeStatus(selectedGame.status);
                   const isPlayerInGame = selectedGame.players.includes(wallet.publicKey?.toBase58() || '');
                   const hasClaimedRefund = selectedGame.refundedPlayers.includes(wallet.publicKey?.toBase58() || '');
                   const isCreator = selectedGame.creator === wallet.publicKey?.toBase58();
-                  const isExpired = Date.now() >= selectedGame.expireTime.getTime();
-                  const afterStartTime = Date.now() >= selectedGame.startTime.getTime();
-                  const notEnoughPlayers = selectedGame.currentPlayers < 3;
 
-                  // Show refund button if:
-                  // 1. Player is in game AND hasn't claimed refund
-                  // 2. Game is in a refundable state (Cancelled, Expired, or not started with < 3 players)
-                  // 3. For ExpiredWithPenalty, only non-creators can claim
                   const canClaimRefund = isPlayerInGame && !hasClaimedRefund && (
-                    normalizedStatus === 'Cancelled' ||
-                    normalizedStatus === 'Expired' ||
-                    (normalizedStatus === 'Expiredwithpenalty' && !isCreator) ||
-                    (normalizedStatus === 'ExpiredWithPenalty' && !isCreator) ||
-                    (afterStartTime && notEnoughPlayers && !selectedGame.gameStarted)
+                    normalized === 'Cancelled' ||
+                    normalized === 'Expired' ||
+                    (normalized === 'Expiredwithpenalty' && !isCreator) ||
+                    (normalized === 'ExpiredWithPenalty' && !isCreator)
                   );
-
-                  console.log('🔍 Refund button logic:', {
-                    normalizedStatus,
-                    isPlayerInGame,
-                    hasClaimedRefund,
-                    isCreator,
-                    canClaimRefund,
-                    wallet: wallet.publicKey?.toBase58(),
-                    players: selectedGame.players,
-                    refundedPlayers: selectedGame.refundedPlayers
-                  });
 
                   return canClaimRefund ? (
                     <button
@@ -1454,54 +1367,6 @@ export default function Lobby() {
                       <Trophy className="w-4 h-4" />
                       {solanaGame.loading ? 'Claiming...' : `Claim Refund (${selectedGame.entryFee.toFixed(2)} SOL)`}
                     </button>
-                  ) : null;
-                })()}
-
-                {/* Already joined indicator */}
-                {selectedGame.players.includes(wallet.publicKey?.toBase58() || '') &&
-                  Date.now() < selectedGame.startTime.getTime() && (
-                    <div
-                      className="flex-1 py-3 rounded-lg font-semibold text-center"
-                      style={{
-                        background: 'hsl(120, 100%, 60%)',
-                        color: 'black'
-                      }}
-                    >
-                      ✓ Already Joined
-                    </div>
-                  )}
-
-                {/* Already refunded indicator */}
-                {selectedGame.refundedPlayers.includes(wallet.publicKey?.toBase58() || '') && (
-                  <div
-                    className="flex-1 py-3 rounded-lg font-semibold text-center"
-                    style={{
-                      background: 'hsl(50, 100%, 60%)',
-                      color: 'black'
-                    }}
-                  >
-                    ✓ Refund Claimed
-                  </div>
-                )}
-
-                {/* Penalty message for creator in ExpiredWithPenalty games */}
-                {(() => {
-                  const normalizedStatus = normalizeStatus(selectedGame.status);
-                  const isCreator = selectedGame.creator === wallet.publicKey?.toBase58();
-                  const hasClaimedRefund = selectedGame.refundedPlayers.includes(wallet.publicKey?.toBase58() || '');
-                  const isPenaltyStatus = normalizedStatus === 'Expiredwithpenalty' || normalizedStatus === 'ExpiredWithPenalty';
-
-                  return (isPenaltyStatus && isCreator && !hasClaimedRefund) ? (
-                    <div
-                      className="flex-1 py-3 rounded-lg font-semibold text-center flex items-center justify-center gap-2"
-                      style={{
-                        background: 'hsl(0, 100%, 50%)',
-                        color: 'white'
-                      }}
-                    >
-                      <AlertCircle className="w-4 h-4" />
-                      Entry forfeited (penalty)
-                    </div>
                   ) : null;
                 })()}
 
