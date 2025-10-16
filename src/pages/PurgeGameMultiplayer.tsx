@@ -656,8 +656,12 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
                 if (newHp <= 0 && myPlayer.alive) {
                     createExplosion(myPlayer.x, myPlayer.y, myPlayer.color);
+                    console.log('💀 [Elimination] Sending elimination for:', myPlayer.id.slice(0, 8));
                     sendEliminated();
                     toast.error('💀 You have been eliminated!');
+
+                    // Force update player state to dead
+                    setMyPlayer(prev => prev ? { ...prev, alive: false } : null);
                 }
             }
         }
@@ -845,21 +849,73 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         };
     }, [gameStarted, gameEnded, myPlayer, gameLoop]);
 
+    // ✅ FIX: Periodic check for winner (backup for WebSocket)
     useEffect(() => {
-        if (!gameStarted || gameEnded || !myPlayer || winnerDeclared || !isConnected) return;
+        if (!gameStarted || gameEnded || !myPlayer || winnerDeclared) return;
+
+        const checkInterval = setInterval(() => {
+            const aliveCount = Array.from(otherPlayers.values()).filter(p => p.alive).length + (myPlayer.alive ? 1 : 0);
+
+            console.log('⏰ [Periodic Check] Alive count:', aliveCount, 'My HP:', myPlayer.hp);
+
+            // If I'm the only one alive
+            if (aliveCount === 1 && myPlayer.alive && !winnerDeclared) {
+                console.log('⏰ [Periodic Check] Detected winner!');
+                clearInterval(checkInterval);
+            }
+        }, 2000); // Check every 2 seconds
+
+        return () => clearInterval(checkInterval);
+    }, [gameStarted, gameEnded, myPlayer, otherPlayers, winnerDeclared]);
+
+    // ✅ FIX: Check for winner with better logging and simpler logic
+    useEffect(() => {
+        if (!gameStarted || gameEnded || !myPlayer || winnerDeclared) return;
 
         const aliveCount = Array.from(otherPlayers.values()).filter(p => p.alive).length + (myPlayer.alive ? 1 : 0);
+        const totalPlayers = readyPlayers.length;
 
-        if (aliveCount === 1 && myPlayer.alive && otherPlayers.size >= readyPlayers.length - 1) {
+        console.log('🏆 [Winner Check]', {
+            aliveCount,
+            totalPlayers,
+            myPlayerAlive: myPlayer.alive,
+            otherPlayersSize: otherPlayers.size,
+            otherPlayersAlive: Array.from(otherPlayers.values()).filter(p => p.alive).length,
+            isConnected,
+            winnerDeclared
+        });
+
+        // ✅ Simple check: if only 1 player alive and I'm that player
+        if (aliveCount === 1 && myPlayer.alive) {
+            console.log('🏆 [Winner] Declaring winner!');
             setWinnerDeclared(true);
             sendWinner(myPlayer.id);
             setGameEnded(true);
 
+            toast.success('🏆 VICTORY! You are the last survivor!');
+
             setTimeout(() => {
+                console.log('🏆 [Winner] Calling onGameEnd');
                 onGameEnd(wallet.publicKey!);
             }, 2000);
         }
-    }, [otherPlayers, myPlayer?.alive, gameStarted, gameEnded, isConnected, readyPlayers.length, winnerDeclared, sendWinner, wallet.publicKey, onGameEnd, myPlayer]);
+
+        // ✅ Alternative check: if all other players are dead
+        const allOthersDead = Array.from(otherPlayers.values()).every(p => !p.alive);
+        if (allOthersDead && otherPlayers.size > 0 && myPlayer.alive && !winnerDeclared) {
+            console.log('🏆 [Winner] All others dead, declaring winner!');
+            setWinnerDeclared(true);
+            sendWinner(myPlayer.id);
+            setGameEnded(true);
+
+            toast.success('🏆 VICTORY! All opponents eliminated!');
+
+            setTimeout(() => {
+                console.log('🏆 [Winner] Calling onGameEnd');
+                onGameEnd(wallet.publicKey!);
+            }, 2000);
+        }
+    }, [otherPlayers, myPlayer?.alive, gameStarted, gameEnded, readyPlayers.length, winnerDeclared, sendWinner, wallet.publicKey, onGameEnd, myPlayer, isConnected]);
 
     useEffect(() => {
         return () => {
