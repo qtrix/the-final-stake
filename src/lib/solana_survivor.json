@@ -1,5 +1,5 @@
 {
-  "address": "AU3td9Pd4mU5XTn8fQUwKjZZhMsizEpQNjtbMBbfvJvi",
+  "address": "95SKb14wtHQqKCqSZXEt4p4wLKdLVxDQWHRimE8T59Rm",
   "metadata": {
     "name": "solana_survivor",
     "version": "0.1.0",
@@ -1596,6 +1596,10 @@
             "type": {
               "option": "pubkey"
             }
+          },
+          {
+            "name": "phase3_prize_claimed",
+            "type": "bool"
           },
           {
             "name": "platform_fee_collected",

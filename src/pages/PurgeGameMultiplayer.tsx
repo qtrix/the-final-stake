@@ -55,6 +55,8 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     const updateThrottleRef = useRef<number>(0);
     const lastBalanceFetchRef = useRef<number>(0);
     const particlesRef = useRef<ExplosionParticle[]>([]);
+    const connectionRetryRef = useRef<number>(0);
+    const maxRetries = 5;
 
     const interpolatedPlayersRef = useRef<Map<string, PlayerState>>(new Map());
 
@@ -71,28 +73,34 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     const [shieldUses, setShieldUses] = useState(0);
     const [healthUses, setHealthUses] = useState(0);
     const [winnerDeclared, setWinnerDeclared] = useState(false);
+    const [connectionError, setConnectionError] = useState<string | null>(null);
 
     const getSpeedCost = useMemo(() => 100 + (speedUses * 50), [speedUses]);
     const getShieldCost = useMemo(() => 150 + (shieldUses * 75), [shieldUses]);
     const getHealthCost = useMemo(() => 50 + (healthUses * 25), [healthUses]);
 
-    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner } = useMultiplayerGame({
+    // ✅ FIX: Proper WebSocket connection with retry logic
+    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner, reconnect } = useMultiplayerGame({
         gameId,
-        enabled: true,
+        enabled: true, // Always try to connect
         onPlayerUpdate: useCallback((player: PlayerState) => {
+            console.log('📥 [WebSocket] Player update received:', player.id.slice(0, 8));
             interpolatedPlayersRef.current.set(player.id, player);
         }, []),
         onPlayerEliminated: useCallback((playerId) => {
+            console.log('💀 [WebSocket] Player eliminated:', playerId.slice(0, 8));
             setEliminated(prev => prev + 1);
             toast.error('Player eliminated!');
         }, []),
         onWinnerDeclared: useCallback((winnerId) => {
+            console.log('🏆 [WebSocket] Winner declared:', winnerId.slice(0, 8));
             if (winnerId === wallet.publicKey?.toBase58()) {
                 toast.success('🏆 YOU WON!');
             }
             setGameEnded(true);
         }, [wallet.publicKey]),
         onGamePhaseChange: useCallback((phase) => {
+            console.log('🎮 [WebSocket] Game phase changed to:', phase);
             if (phase === 'countdown') {
                 setCountdown({ remaining: 15, isActive: true });
                 toast.info('⚔️ Battle starting in 15 seconds...');
@@ -105,6 +113,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             }
         }, []),
         onCountdownSync: useCallback((startTime: number, duration: number) => {
+            console.log('⏱️ [WebSocket] Countdown synced:', { startTime, duration });
             const calculateRemaining = () => {
                 const now = Date.now();
                 const endTime = startTime + duration;
@@ -120,8 +129,52 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 setCountdown({ remaining, isActive: remaining > 0 });
                 if (remaining <= 0) clearInterval(countdownIntervalRef.current);
             }, 100);
+        }, []),
+        onConnect: useCallback(() => {
+            console.log('✅ [WebSocket] Connected successfully!');
+            setConnectionError(null);
+            connectionRetryRef.current = 0;
+            toast.success('Connected to game server!');
+        }, []),
+        onDisconnect: useCallback(() => {
+            console.log('❌ [WebSocket] Disconnected from server');
+            setConnectionError('Disconnected from server');
+            toast.error('Lost connection to game server');
+        }, []),
+        onError: useCallback((error: any) => {
+            console.error('💥 [WebSocket] Connection error:', error);
+            setConnectionError(error.message || 'Connection failed');
         }, [])
     });
+
+    // ✅ FIX: Auto-retry connection with exponential backoff
+    useEffect(() => {
+        if (!isConnected && !gameEnded && connectionRetryRef.current < maxRetries) {
+            const retryDelay = Math.min(1000 * Math.pow(2, connectionRetryRef.current), 10000);
+            console.log(`🔄 [WebSocket] Retry connection attempt ${connectionRetryRef.current + 1}/${maxRetries} in ${retryDelay}ms`);
+
+            const timer = setTimeout(() => {
+                connectionRetryRef.current += 1;
+                if (reconnect) {
+                    console.log('🔌 [WebSocket] Attempting reconnection...');
+                    reconnect();
+                }
+            }, retryDelay);
+
+            return () => clearTimeout(timer);
+        } else if (connectionRetryRef.current >= maxRetries && !isConnected) {
+            console.error('❌ [WebSocket] Max retries reached, giving up');
+            setConnectionError('Failed to connect after multiple attempts');
+            toast.error('Unable to connect to game server. Please refresh the page.');
+        }
+    }, [isConnected, gameEnded, reconnect]);
+
+    // ✅ FIX: Log connection status changes
+    useEffect(() => {
+        console.log('🔌 [WebSocket] Connection status:', isConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌');
+        console.log('🎮 [Game] Phase:', gamePhase);
+        console.log('👥 [Players] Other players:', otherPlayers.size);
+    }, [isConnected, gamePhase, otherPlayers.size]);
 
     const createExplosion = useCallback((x: number, y: number, color: string): void => {
         const particles: ExplosionParticle[] = [];
@@ -145,7 +198,12 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     }, []);
 
     const initializePlayer = useCallback(() => {
-        if (!wallet.publicKey) return;
+        if (!wallet.publicKey) {
+            console.error('❌ [Init] No wallet public key');
+            return;
+        }
+
+        console.log('🎮 [Init] Initializing player...');
 
         const playerColors = [
             'hsl(280, 100%, 60%)', 'hsl(200, 100%, 60%)', 'hsl(120, 100%, 60%)', 'hsl(60, 100%, 60%)',
@@ -175,18 +233,32 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             pulsePhase: 0
         };
 
+        console.log('✅ [Init] Player initialized:', {
+            id: initialPlayer.id.slice(0, 8),
+            position: `(${initialPlayer.x}, ${initialPlayer.y})`,
+            color: initialPlayer.color
+        });
+
         setMyPlayer(initialPlayer);
         interpolatedPlayersRef.current.set(initialPlayer.id, initialPlayer);
-        sendUpdate(initialPlayer);
-    }, [wallet.publicKey, readyPlayers, sendUpdate]);
+
+        if (isConnected) {
+            console.log('📤 [Init] Sending initial player state...');
+            sendUpdate(initialPlayer);
+        } else {
+            console.warn('⚠️ [Init] Not connected, player state not sent');
+        }
+    }, [wallet.publicKey, readyPlayers, sendUpdate, isConnected]);
 
     const throttledSendUpdate = useCallback((player: PlayerState) => {
         const now = Date.now();
         if (now - updateThrottleRef.current > 50) {
             updateThrottleRef.current = now;
-            sendUpdate(player);
+            if (isConnected) {
+                sendUpdate(player);
+            }
         }
-    }, [sendUpdate]);
+    }, [sendUpdate, isConnected]);
 
     const buyPowerUp = useCallback((type: 'speed' | 'shield' | 'health') => {
         if (!myPlayer || !myPlayer.alive) {
@@ -283,8 +355,18 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         }
     }, [myPlayer, virtualBalance, getSpeedCost, getShieldCost, getHealthCost, sendUpdate]);
 
+    // ✅ FIX: Better game start logic
     useEffect(() => {
+        console.log('🎮 [Game Start Check]', {
+            countdownActive: countdown.isActive,
+            gameStarted,
+            hasWallet: !!wallet.publicKey,
+            readyPlayersCount: readyPlayers.length,
+            isConnected
+        });
+
         if (!countdown.isActive && !gameStarted && wallet.publicKey && readyPlayers.length > 0 && isConnected) {
+            console.log('🚀 [Game Start] Starting game in 1 second...');
             const timer = setTimeout(() => {
                 setGameStarted(true);
                 initializePlayer();
@@ -300,21 +382,24 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             if (!wallet.publicKey || !solanaGame || !gameStarted) return;
 
             const now = Date.now();
-            if (now - lastBalanceFetchRef.current < 10000) return; // Max 1 request per 10 seconds
+            if (now - lastBalanceFetchRef.current < 10000) return;
             lastBalanceFetchRef.current = now;
 
             try {
+                console.log('💰 [Balance] Fetching...');
                 const playerState = await solanaGame.getPlayerState(gameId, wallet.publicKey);
                 if (playerState) {
-                    setVirtualBalance(playerState.virtualBalance / 1e9);
+                    const balance = playerState.virtualBalance / 1e9;
+                    console.log('💰 [Balance] Fetched:', balance, 'SOL');
+                    setVirtualBalance(balance);
                 }
             } catch (error) {
-                console.error('[Balance] Fetch failed:', error);
+                console.error('❌ [Balance] Fetch failed:', error);
             }
         };
 
         if (gameStarted) {
-            fetchBalance(); // Initial fetch only
+            fetchBalance();
         }
     }, [gameStarted, gameId, wallet.publicKey, solanaGame]);
 
@@ -361,7 +446,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         });
     }, []);
 
-    // ✅ MOBILE: Touch controls
     const handleTouchMove = useCallback((e: TouchEvent) => {
         e.preventDefault();
         const canvas = canvasRef.current;
@@ -398,7 +482,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         return (dx * dx + dy * dy) > (safeZone.radius * safeZone.radius);
     }, [safeZone]);
 
-    // ✅ ENHANCED COLLISION with push force and damage
     const handlePlayerCollision = useCallback((p1: PlayerState, p2: PlayerState) => {
         const dx = p1.x - p2.x;
         const dy = p1.y - p2.y;
@@ -406,26 +489,20 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         const minDistance = p1.radius + p2.radius;
 
         if (distance < minDistance && distance > 0) {
-            // Calculate push force
             const overlap = minDistance - distance;
             const pushForce = overlap * 0.5;
             const angle = Math.atan2(dy, dx);
             const pushX = Math.cos(angle) * pushForce;
             const pushY = Math.sin(angle) * pushForce;
 
-            // Shield collision - push back and explosion
             if (p1.hasShield && !p2.hasShield) {
                 createExplosion(p2.x, p2.y, p2.color);
                 toast.warning('💥 Shield collision!');
-                return { pushX: pushX * 2, pushY: pushY * 2, damage: 0 }; // Double push with shield
-            }
-            // Speed collision - faster push
-            else if (p1.hasSpeed && !p2.hasSpeed) {
+                return { pushX: pushX * 2, pushY: pushY * 2, damage: 0 };
+            } else if (p1.hasSpeed && !p2.hasSpeed) {
                 createExplosion((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, '#f59e0b');
                 return { pushX: pushX * 1.5, pushY: pushY * 1.5, damage: 0 };
-            }
-            // Normal collision - mutual push
-            else {
+            } else {
                 return { pushX, pushY, damage: 0 };
             }
         }
@@ -433,7 +510,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         return null;
     }, [createExplosion]);
 
-    // ✅ Check if mouse is inside canvas bounds
     const isMouseInCanvas = useCallback(() => {
         return mouse.x >= 0 && mouse.x <= 900 && mouse.y >= 0 && mouse.y <= 700;
     }, [mouse]);
@@ -530,28 +606,22 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 let newX = Math.max(20, Math.min(880, myPlayer.x + moveX));
                 let newY = Math.max(20, Math.min(680, myPlayer.y + moveY));
 
-                // ✅ Check collisions with other players and apply push
                 Array.from(interpolatedPlayersRef.current.values()).forEach(otherPlayer => {
                     if (otherPlayer.id !== myPlayer.id && otherPlayer.alive) {
                         const tempPlayer = { ...myPlayer, x: newX, y: newY };
                         const collision = handlePlayerCollision(tempPlayer, otherPlayer);
 
                         if (collision) {
-                            // Apply push force to my player
                             newX += collision.pushX;
                             newY += collision.pushY;
-
-                            // Keep within bounds
                             newX = Math.max(20, Math.min(880, newX));
                             newY = Math.max(20, Math.min(680, newY));
 
-                            // Send push update to other player (they should be pushed back)
                             const pushedOtherPlayer = {
                                 ...otherPlayer,
                                 x: Math.max(20, Math.min(880, otherPlayer.x - collision.pushX)),
                                 y: Math.max(20, Math.min(680, otherPlayer.y - collision.pushY))
                             };
-                            // Update their interpolated position
                             interpolatedPlayersRef.current.set(otherPlayer.id, pushedOtherPlayer);
                         }
                     }
@@ -559,11 +629,9 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
                 let newHp = myPlayer.hp;
 
-                // ✅ Only take damage if mouse is in canvas AND outside safe zone
                 if (isMouseInCanvas() && isOutsideSafeZone(newX, newY)) {
                     newHp = Math.max(0, myPlayer.hp - 1);
                 } else if (!isMouseInCanvas() && isOutsideSafeZone(newX, newY)) {
-                    // Player is outside canvas - no HP loss
                     newHp = myPlayer.hp;
                 }
 
@@ -855,18 +923,45 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                         </p>
                     </div>
 
+                    {/* ✅ FIX: Better connection status display */}
                     {!isConnected && (
-                        <div className="mt-6 bg-red-900/40 border border-red-500 rounded-lg p-4 flex items-center justify-center gap-3">
-                            <AlertCircle className="w-6 h-6 text-red-400" />
-                            <p className="text-red-300 font-semibold">Connecting to game server...</p>
+                        <div className="mt-6 bg-red-900/40 border border-red-500 rounded-lg p-4">
+                            <div className="flex items-center justify-center gap-3 mb-2">
+                                <AlertCircle className="w-6 h-6 text-red-400 animate-pulse" />
+                                <p className="text-red-300 font-semibold">
+                                    {connectionError || 'Connecting to game server...'}
+                                </p>
+                            </div>
+                            <p className="text-red-400 text-sm">
+                                Retry attempt: {connectionRetryRef.current} / {maxRetries}
+                            </p>
+                            {reconnect && connectionRetryRef.current < maxRetries && (
+                                <button
+                                    onClick={() => {
+                                        console.log('🔄 [Manual] Reconnect button clicked');
+                                        reconnect();
+                                    }}
+                                    className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+                                >
+                                    Retry Connection
+                                </button>
+                            )}
                         </div>
                     )}
+
+                    {/* ✅ Debug info (remove in production) */}
+                    <div className="mt-4 text-xs text-gray-500 font-mono">
+                        <div>Game ID: {gameId}</div>
+                        <div>Ready Players: {readyPlayers.length}</div>
+                        <div>Connection: {isConnected ? '✅ Connected' : '❌ Disconnected'}</div>
+                        <div>Game Phase: {gamePhase || 'unknown'}</div>
+                    </div>
                 </div>
             </div>
         );
     }
 
-    // MAIN GAME SCREEN
+    // MAIN GAME SCREEN (păstrat identic ca înainte)
     return (
         <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black relative overflow-hidden">
             <ParticleBackground />

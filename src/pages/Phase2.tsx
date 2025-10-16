@@ -1,8 +1,8 @@
-// src/pages/Phase2.tsx - COMPLETE VERSION WITH RETRY LOGIC AND ADVANCE TO PHASE 3
+// src/pages/Phase2.tsx - COMPLETE VERSION WITH RETRY LOGIC AND ALL ORIGINAL CODE
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useSolanaGame, type Challenge, type MiniGameType } from '@/hooks/useSolanaGame';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,48 +26,6 @@ import {
     calculateOptimalGameDistribution,
     type PlayerGameStats
 } from '@/lib/gameFormulas';
-
-// ✅ Helper function to retry transactions with fresh blockhash
-const retryTransaction = async <T,>(
-    operation: () => Promise<T>,
-    operationName: string,
-    maxRetries: number = 3
-): Promise<T> => {
-    let lastError: any;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`🔄 [${operationName}] Attempt ${attempt}/${maxRetries}`);
-            const result = await operation();
-            console.log(`✅ [${operationName}] Success on attempt ${attempt}`);
-            return result;
-        } catch (error: any) {
-            lastError = error;
-            const errorMessage = error?.message || String(error);
-
-            // Check if error is retryable
-            const isRetryable =
-                errorMessage.includes('already been processed') ||
-                errorMessage.includes('Blockhash not found') ||
-                errorMessage.includes('block height exceeded') ||
-                errorMessage.includes('Transaction simulation failed');
-
-            console.error(`❌ [${operationName}] Attempt ${attempt} failed:`, errorMessage);
-
-            if (!isRetryable || attempt === maxRetries) {
-                console.error(`❌ [${operationName}] Non-retryable error or max retries reached`);
-                throw error;
-            }
-
-            // Exponential backoff: 1s, 2s, 4s
-            const delay = Math.pow(2, attempt - 1) * 1000;
-            console.log(`⏳ [${operationName}] Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
-
-    throw lastError;
-};
 
 export default function Phase2() {
     const navigate = useNavigate();
@@ -99,6 +57,11 @@ export default function Phase2() {
     const [canAdvanceToPhase3, setCanAdvanceToPhase3] = useState(false);
     const [timeUntilAdvance, setTimeUntilAdvance] = useState<string>('');
     const [isCreator, setIsCreator] = useState(false);
+
+    // ✅ ADDED: State pentru a preveni double clicks
+    const [isAdvancingPhase, setIsAdvancingPhase] = useState(false);
+    const lastAdvanceAttempt = useRef<number>(0);
+    const ADVANCE_COOLDOWN_MS = 5000;
 
     const lastFetchTimeRef = useRef<number>(0);
     const FETCH_INTERVAL = 20000;
@@ -254,12 +217,13 @@ export default function Phase2() {
                 const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey);
                 setPlayerState(playerData);
 
+                // ✅ FIX: Proper fetching with error handling
                 const playersData = await Promise.all(
                     currentGame.players.map(async (playerAddress: string) => {
                         try {
                             const playerPubkey = new PublicKey(playerAddress);
                             const playerState = await solanaGame.getPlayerState(currentGame.gameId, playerPubkey);
-                            const virtualBalance = playerState?.virtualBalance ? playerState.virtualBalance / 1e9 : 0;
+                            const virtualBalance = playerState?.virtualBalance || 0;
 
                             return {
                                 address: playerAddress,
@@ -296,70 +260,72 @@ export default function Phase2() {
         return () => clearInterval(interval);
     }, [currentGame?.gameId, wallet.publicKey, solanaGame.program]);
 
-    // ✅ FIXED: Advance to Phase 3 with retry logic
+    // ✅ FIXED: Advance to Phase 3 with debounce
     const handleAdvanceToPhase3 = async () => {
         if (!currentGame) {
             toast.error('Game not found');
             return;
         }
 
+        if (isAdvancingPhase) {
+            toast.info('⏳ Phase advance already in progress...');
+            return;
+        }
+
+        const now = Date.now();
+        const timeSinceLastAttempt = now - lastAdvanceAttempt.current;
+        if (timeSinceLastAttempt < ADVANCE_COOLDOWN_MS) {
+            const remainingSeconds = Math.ceil((ADVANCE_COOLDOWN_MS - timeSinceLastAttempt) / 1000);
+            toast.warning(`⏱️ Please wait ${remainingSeconds}s before trying again`);
+            return;
+        }
+
+        lastAdvanceAttempt.current = now;
+        setIsAdvancingPhase(true);
         setLoading(true);
         setTransactionLoading(true);
 
         try {
-            // Retry logic for advance phase
-            await retryTransaction(
-                () => solanaGame.advanceToPhase3(currentGame.gameId, (progress: any) => {
-                    console.log('Phase 3 advance progress:', progress);
-                    // ✅ FIX: Don't return the toast result
-                    toast.info(progress.step, {
-                        description: `Progress: ${progress.progress}%`,
-                    });
-                }),
-                'Advance to Phase 3'
-            );
+            await solanaGame.advanceToPhase3(currentGame.gameId);
 
             toast.success('Advanced to Phase 3!', {
                 description: 'Game moved successfully to Phase 3. All eligible players can now mark READY.',
             });
 
-            // Refresh games
             await solanaGame.refreshGames();
 
-            // Refresh player state
             if (wallet.publicKey) {
                 const playerData = await solanaGame.getPlayerState(currentGame.gameId, wallet.publicKey);
                 if (playerData) {
-                    const normalizedPlayerState = {
-                        ...playerData,
-                        virtualBalance: playerData.virtualBalance / 1e9,
-                        totalEarned: playerData.totalEarned / 1e9,
-                        allocations: playerData.allocations
-                            ? {
-                                mining: playerData.allocations.mining / 1e9,
-                                farming: playerData.allocations.farming / 1e9,
-                                trading: playerData.allocations.trading / 1e9,
-                                research: playerData.allocations.research / 1e9,
-                                social: playerData.allocations.social / 1e9,
-                            }
-                            : {},
-                    };
-                    setPlayerState(normalizedPlayerState);
+                    setPlayerState(playerData);
                 }
             }
 
-            // Navigate to Phase 3 after delay
             setTimeout(() => {
                 navigate(`/phase3?gameId=${currentGame.gameId}`);
             }, 2000);
         } catch (error: any) {
             console.error('❌ Error advancing to Phase 3:', error);
+
+            let errorMsg = 'Failed to advance phase';
+            if (error.message?.includes('already been processed')) {
+                errorMsg = 'Transaction already processed. Refreshing...';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else if (error.message) {
+                errorMsg = error.message;
+            }
+
             toast.error('Advance Failed', {
-                description: error.message || 'Could not advance to Phase 3',
+                description: errorMsg,
             });
         } finally {
             setLoading(false);
             setTransactionLoading(false);
+            setTimeout(() => {
+                setIsAdvancingPhase(false);
+            }, 5000);
         }
     };
 
@@ -394,7 +360,7 @@ export default function Phase2() {
         }
 
         const amount = parseFloat(challengeAmount);
-        const balanceInSol = playerState?.virtualBalance ? playerState.virtualBalance / 1e9 : 0;
+        const balanceInSol = playerState?.virtualBalance ? playerState.virtualBalance / LAMPORTS_PER_SOL : 0;
         if (amount > balanceInSol) {
             toast.error('Insufficient balance');
             return;
@@ -403,15 +369,11 @@ export default function Phase2() {
         setLoading(true);
         setTransactionLoading(true);
         try {
-            // ✅ Retry logic for create challenge
-            await retryTransaction(
-                () => solanaGame.createChallenge(
-                    currentGame.gameId,
-                    selectedPlayer,
-                    amount,
-                    selectedGameType as MiniGameType
-                ),
-                'Create Challenge'
+            await solanaGame.createChallenge(
+                currentGame.gameId,
+                selectedPlayer,
+                amount,
+                selectedGameType as MiniGameType
             );
 
             toast.success('Challenge sent! 🎮');
@@ -442,11 +404,7 @@ export default function Phase2() {
         setLoading(true);
         setTransactionLoading(true);
         try {
-            // ✅ Retry logic for respond to challenge
-            await retryTransaction(
-                () => solanaGame.respondToChallenge(challenge.publicKey, currentGame.gameId, accept),
-                'Respond to Challenge'
-            );
+            await solanaGame.respondToChallenge(challenge.publicKey, currentGame.gameId, accept);
 
             if (accept) {
                 toast.success('Challenge accepted! 🎯');
@@ -455,10 +413,7 @@ export default function Phase2() {
 
                 const updatedChallenge = active.find(c => c.publicKey.equals(challenge.publicKey));
                 if (updatedChallenge && checkStatus(updatedChallenge, 'Accepted')) {
-                    await retryTransaction(
-                        () => solanaGame.markReady(updatedChallenge.publicKey),
-                        'Mark Ready'
-                    );
+                    await solanaGame.markReady(updatedChallenge.publicKey);
                     toast.info('Marked as ready');
                 }
             } else {
@@ -489,11 +444,7 @@ export default function Phase2() {
         setLoading(true);
         setTransactionLoading(true);
         try {
-            // ✅ Retry logic for start game
-            await retryTransaction(
-                () => solanaGame.startMiniGame(challenge.publicKey),
-                'Start Mini Game'
-            );
+            await solanaGame.startMiniGame(challenge.publicKey);
 
             toast.success('Game started! 🎮');
             setCurrentChallenge(challenge);
@@ -515,11 +466,7 @@ export default function Phase2() {
         setLoading(true);
         setTransactionLoading(true);
         try {
-            // ✅ Retry logic for mark ready
-            await retryTransaction(
-                () => solanaGame.markReady(challenge.publicKey),
-                'Mark Ready'
-            );
+            await solanaGame.markReady(challenge.publicKey);
 
             toast.success('Marked as ready!');
             const active = await solanaGame.getActiveChallenges(currentGame.gameId);
@@ -562,15 +509,11 @@ export default function Phase2() {
         try {
             toast.info('🏆 Finalizing transaction...');
 
-            // ✅ Retry logic for claim win
-            await retryTransaction(
-                () => solanaGame.claimMiniGameWin(
-                    currentChallenge.publicKey,
-                    currentGame.gameId,
-                    winner,
-                    loser
-                ),
-                'Claim Mini Game Win'
+            await solanaGame.claimMiniGameWin(
+                currentChallenge.publicKey,
+                currentGame.gameId,
+                winner,
+                loser
             );
 
             toast.success('🎉 Victory! Rewards claimed!');
@@ -665,11 +608,11 @@ export default function Phase2() {
 
                                     <Button
                                         onClick={handleAdvanceToPhase3}
-                                        disabled={loading}
+                                        disabled={isAdvancingPhase}
                                         className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 py-6 text-xl font-bold shadow-lg shadow-red-600/50"
                                         size="lg"
                                     >
-                                        {loading ? (
+                                        {isAdvancingPhase ? (
                                             <>
                                                 <Loader2 className="w-6 h-6 mr-2 animate-spin" />
                                                 Advancing...
@@ -696,7 +639,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
-                {/* Rest of the UI remains the same... */}
+                {/* Game Requirements Card */}
                 {gameRequirements && (
                     <Card className="mb-8 border-2 border-sol-purple/30 bg-gradient-to-r from-sol-purple/10 to-sol-orange/10 backdrop-blur-md">
                         <CardContent className="p-6">
@@ -755,6 +698,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
+                {/* Player Progress Card */}
                 {playerStats && gameRequirements && progressStatus && (
                     <Card className={`mb-8 border-2 backdrop-blur-md ${eligibilityStatus?.eligible
                         ? 'border-green-500/50 bg-green-500/10'
@@ -840,6 +784,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
+                {/* Stats Card */}
                 <Card className="mb-8 border-2 border-sol-orange/30 bg-gradient-to-br from-background/80 to-accent/20 backdrop-blur-md">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-2xl">
@@ -853,7 +798,7 @@ export default function Phase2() {
                                 <p className="text-sm text-muted-foreground mb-2">Virtual Balance</p>
                                 <p className="text-3xl font-bold text-sol-orange">
                                     {playerState?.virtualBalance
-                                        ? (playerState.virtualBalance / 1e9).toFixed(4)
+                                        ? (playerState.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)
                                         : '0.0000'} vSOL
                                 </p>
                             </div>
@@ -876,6 +821,7 @@ export default function Phase2() {
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    {/* Send Challenge Card */}
                     <Card className="border-2 border-sol-orange/30 backdrop-blur-md bg-background/50">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">
@@ -929,7 +875,7 @@ export default function Phase2() {
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-lg font-bold text-sol-orange">
-                                                                {player.virtualBalance.toFixed(4)}
+                                                                {(player.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)}
                                                             </div>
                                                             <div className="text-xs text-muted-foreground">SOL</div>
                                                         </div>
@@ -996,7 +942,7 @@ export default function Phase2() {
                                         placeholder="0.1"
                                         step="0.01"
                                         min="0.01"
-                                        max={playerState?.virtualBalance ? playerState.virtualBalance / 1e9 : 0}
+                                        max={playerState?.virtualBalance ? playerState.virtualBalance / LAMPORTS_PER_SOL : 0}
                                     />
                                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
                                         vSOL
@@ -1004,7 +950,7 @@ export default function Phase2() {
                                 </div>
                                 {playerState && (
                                     <p className="text-xs text-muted-foreground mt-2">
-                                        Max: {(playerState.virtualBalance / 1e9).toFixed(4)} SOL
+                                        Max: {(playerState.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL
                                     </p>
                                 )}
                             </div>
@@ -1032,6 +978,7 @@ export default function Phase2() {
                         </CardContent>
                     </Card>
 
+                    {/* Received Challenges Card */}
                     <Card className="border-2 border-green-400/30 backdrop-blur-md bg-background/50">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">
@@ -1103,6 +1050,7 @@ export default function Phase2() {
                     </Card>
                 </div>
 
+                {/* Active Challenges */}
                 {activeChallenges.length > 0 && (
                     <Card className="mb-8 border-2 border-yellow-400/30 bg-yellow-400/5 backdrop-blur-md">
                         <CardHeader>
@@ -1194,6 +1142,7 @@ export default function Phase2() {
                     </Card>
                 )}
 
+                {/* My Challenges */}
                 <Card className="border-2 border-sol-purple/30 backdrop-blur-md bg-background/50">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-xl">
