@@ -1,6 +1,6 @@
-// src/hooks/useMultiplayerGame.tsx - Enhanced Multiplayer Hook with Server-Driven Sync
+// src/hooks/useMultiplayerGame.tsx - ULTRA OPTIMIZED for Zero Lag
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PlayerState } from '@/types';
 import { wsManager } from '@/utils/websocketManager';
@@ -15,7 +15,14 @@ interface UseMultiplayerGameOptions {
     onCountdownSync?: (startTime: number, duration: number) => void;
 }
 
-const UPDATE_THROTTLE = 50;
+// ✅ OPTIMIZATION: Reduce throttle to 16ms (60fps)
+const UPDATE_THROTTLE = 16;
+const DEV_MODE = process.env.NODE_ENV === 'development';
+
+// ✅ OPTIMIZATION: Conditional logging only in dev mode
+const log = (...args: any[]) => {
+    if (DEV_MODE) console.log(...args);
+};
 
 export const useMultiplayerGame = ({
     gameId,
@@ -28,114 +35,197 @@ export const useMultiplayerGame = ({
 }: UseMultiplayerGameOptions) => {
     const wallet = useWallet();
     const [isConnected, setIsConnected] = useState(false);
-    const [otherPlayers, setOtherPlayers] = useState<Map<string, PlayerState>>(new Map());
     const [gamePhase, setGamePhase] = useState<'waiting' | 'countdown' | 'active' | 'ended'>('waiting');
-    const lastUpdateTimeRef = useRef<number>(0);
-    const handlerIdRef = useRef<string>(`handler-${Date.now()}-${Math.random()}`);
 
-    useEffect(() => {
-        if (!enabled || !wallet.publicKey) {
-            return;
+    // ✅ OPTIMIZATION: Use ref for otherPlayers to avoid re-renders
+    const otherPlayersRef = useRef<Map<string, PlayerState>>(new Map());
+    const [, forceUpdate] = useState({});
+
+    const lastUpdateTimeRef = useRef<number>(0);
+    const handlerIdRef = useRef<string>(`h${Date.now()}${Math.random().toString(36).slice(2, 7)}`);
+
+    // ✅ OPTIMIZATION: Batch updates queue
+    const updateQueueRef = useRef<Array<{ id: string; state: PlayerState }>>([]);
+    const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // ✅ OPTIMIZATION: Memoized player ID
+    const playerId = useMemo(() =>
+        wallet.publicKey?.toBase58() || '',
+        [wallet.publicKey]
+    );
+
+    // ✅ OPTIMIZATION: Batched update processor
+    const processBatchedUpdates = useCallback(() => {
+        if (updateQueueRef.current.length === 0) return;
+
+        const updates = updateQueueRef.current;
+        updateQueueRef.current = [];
+
+        // Process all updates at once
+        updates.forEach(({ id, state }) => {
+            otherPlayersRef.current.set(id, state);
+        });
+
+        // Single re-render for all updates
+        forceUpdate({});
+
+        log('[Hook] Processed batch:', updates.length, 'updates');
+    }, []);
+
+    // ✅ OPTIMIZATION: Efficient player update handler
+    const handlePlayerUpdate = useCallback((id: string, state: PlayerState) => {
+        // Add to batch queue
+        updateQueueRef.current.push({ id, state });
+
+        // Schedule batch processing
+        if (batchTimeoutRef.current) {
+            clearTimeout(batchTimeoutRef.current);
         }
 
-        const playerId = wallet.publicKey.toBase58();
-        const handlersId = handlerIdRef.current;
+        batchTimeoutRef.current = setTimeout(processBatchedUpdates, 5); // 5ms batch window
 
-        console.log('[Hook] Registering multiplayer handlers');
+        // Call callback if provided
+        onPlayerUpdate?.(id, state);
+    }, [onPlayerUpdate, processBatchedUpdates]);
 
-        wsManager.connect(gameId, playerId, handlersId, {
-            onConnected: () => {
-                console.log('[Hook] Connected');
-                setIsConnected(true);
-            },
-            onDisconnected: () => {
-                console.log('[Hook] Disconnected');
-                setIsConnected(false);
-            },
-            onSync: (players) => {
-                const playersMap = new Map<string, PlayerState>();
-                players.forEach(p => {
-                    if (p.id !== playerId) {
-                        playersMap.set(p.id, p);
-                    }
-                });
-                setOtherPlayers(playersMap);
-                console.log('[Hook] Synced players:', players.length);
-            },
-            onUpdate: (id, state) => {
-                setOtherPlayers(prev => {
-                    const updated = new Map(prev);
-                    updated.set(id, state);
-                    return updated;
-                });
-                onPlayerUpdate?.(id, state);
-            },
-            onEliminated: (id) => {
-                setOtherPlayers(prev => {
-                    const updated = new Map(prev);
-                    const player = updated.get(id);
-                    if (player) {
-                        updated.set(id, { ...player, alive: false });
-                    }
-                    return updated;
-                });
-                onPlayerEliminated?.(id);
-            },
-            onWinner: (winnerId) => {
-                console.log('[Hook] Winner:', winnerId);
-                onWinnerDeclared?.(winnerId);
-            },
-            onPlayerConnected: (id) => {
-                console.log('[Hook] Player joined:', id.slice(0, 8));
-            },
-            onPlayerDisconnected: (id) => {
-                setOtherPlayers(prev => {
-                    const updated = new Map(prev);
-                    updated.delete(id);
-                    return updated;
-                });
-                console.log('[Hook] Player left:', id.slice(0, 8));
-            },
-            onGamePhaseChange: (phase) => {
-                console.log('[Hook] Game phase:', phase);
-                setGamePhase(phase);
-                onGamePhaseChange?.(phase);
-            },
-            onCountdownSync: (startTime, duration) => {
-                console.log('[Hook] Countdown sync:', { startTime, duration });
-                onCountdownSync?.(startTime, duration);
+    // ✅ OPTIMIZATION: Memoized sync handler
+    const handleSync = useCallback((players: PlayerState[]) => {
+        const playersMap = new Map<string, PlayerState>();
+
+        players.forEach(p => {
+            if (p.id !== playerId) {
+                playersMap.set(p.id, p);
             }
         });
 
-        return () => {
-            console.log('[Hook] Unregistering handlers');
-            wsManager.unregisterHandler(handlersId);
-        };
-    }, [gameId, enabled, wallet.publicKey, onPlayerUpdate, onPlayerEliminated, onWinnerDeclared, onGamePhaseChange, onCountdownSync]);
+        otherPlayersRef.current = playersMap;
+        forceUpdate({});
+        log('[Hook] Synced players:', players.length);
+    }, [playerId]);
 
-    const sendUpdate = (state: PlayerState) => {
+    // ✅ OPTIMIZATION: Efficient elimination handler
+    const handleElimination = useCallback((id: string) => {
+        const player = otherPlayersRef.current.get(id);
+        if (player) {
+            otherPlayersRef.current.set(id, { ...player, alive: false });
+            forceUpdate({});
+        }
+        onPlayerEliminated?.(id);
+        log('[Hook] Player eliminated:', id.slice(0, 8));
+    }, [onPlayerEliminated]);
+
+    // ✅ OPTIMIZATION: Memoized winner handler
+    const handleWinner = useCallback((winnerId: string) => {
+        log('[Hook] Winner:', winnerId.slice(0, 8));
+        onWinnerDeclared?.(winnerId);
+    }, [onWinnerDeclared]);
+
+    // ✅ OPTIMIZATION: Efficient disconnection handler
+    const handlePlayerDisconnected = useCallback((id: string) => {
+        otherPlayersRef.current.delete(id);
+        forceUpdate({});
+        log('[Hook] Player left:', id.slice(0, 8));
+    }, []);
+
+    // ✅ OPTIMIZATION: Memoized phase change handler
+    const handleGamePhaseChange = useCallback((phase: 'waiting' | 'countdown' | 'active' | 'ended') => {
+        log('[Hook] Game phase:', phase);
+        setGamePhase(phase);
+        onGamePhaseChange?.(phase);
+    }, [onGamePhaseChange]);
+
+    // ✅ OPTIMIZATION: Memoized countdown sync handler
+    const handleCountdownSync = useCallback((startTime: number, duration: number) => {
+        log('[Hook] Countdown sync:', { startTime, duration });
+        onCountdownSync?.(startTime, duration);
+    }, [onCountdownSync]);
+
+    // ✅ WebSocket handlers setup
+    useEffect(() => {
+        if (!enabled || !playerId) {
+            return;
+        }
+
+        const handlersId = handlerIdRef.current;
+        log('[Hook] Registering multiplayer handlers');
+
+        wsManager.connect(gameId, playerId, handlersId, {
+            onConnected: () => {
+                log('[Hook] Connected');
+                setIsConnected(true);
+            },
+            onDisconnected: () => {
+                log('[Hook] Disconnected');
+                setIsConnected(false);
+            },
+            onSync: handleSync,
+            onUpdate: handlePlayerUpdate,
+            onEliminated: handleElimination,
+            onWinner: handleWinner,
+            onPlayerConnected: (id) => {
+                log('[Hook] Player joined:', id.slice(0, 8));
+            },
+            onPlayerDisconnected: handlePlayerDisconnected,
+            onGamePhaseChange: handleGamePhaseChange,
+            onCountdownSync: handleCountdownSync
+        });
+
+        return () => {
+            log('[Hook] Unregistering handlers');
+            wsManager.unregisterHandler(handlersId);
+
+            // Cleanup batch timeout
+            if (batchTimeoutRef.current) {
+                clearTimeout(batchTimeoutRef.current);
+            }
+        };
+    }, [
+        gameId,
+        enabled,
+        playerId,
+        handleSync,
+        handlePlayerUpdate,
+        handleElimination,
+        handleWinner,
+        handlePlayerDisconnected,
+        handleGamePhaseChange,
+        handleCountdownSync
+    ]);
+
+    // ✅ OPTIMIZATION: Throttled send with RAF for smoothest updates
+    const sendUpdate = useCallback((state: PlayerState) => {
         if (!wsManager.isConnected()) return;
 
-        const now = Date.now();
+        const now = performance.now();
         if (now - lastUpdateTimeRef.current >= UPDATE_THROTTLE) {
-            wsManager.send({ type: 'update', data: state });
+            requestAnimationFrame(() => {
+                wsManager.send({ type: 'update', data: state });
+            });
             lastUpdateTimeRef.current = now;
         }
-    };
+    }, []);
 
-    const sendEliminated = () => {
+    // ✅ OPTIMIZATION: Immediate send for critical events
+    const sendEliminated = useCallback(() => {
         if (wsManager.isConnected()) {
             wsManager.send({ type: 'eliminated' });
-            console.log('[Hook] Sent elimination');
+            log('[Hook] Sent elimination');
         }
-    };
+    }, []);
 
-    const sendWinner = (winnerId: string) => {
+    // ✅ OPTIMIZATION: Immediate send for winner
+    const sendWinner = useCallback((winnerId: string) => {
         if (wsManager.isConnected()) {
             wsManager.send({ type: 'winner', winnerId });
-            console.log('[Hook] Sent winner:', winnerId.slice(0, 8));
+            log('[Hook] Sent winner:', winnerId.slice(0, 8));
         }
-    };
+    }, []);
+
+    // ✅ OPTIMIZATION: Return stable Map reference
+    const otherPlayers = useMemo(() =>
+        otherPlayersRef.current,
+        [otherPlayersRef.current.size]
+    );
 
     return {
         isConnected,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useNavigate } from 'react-router-dom';
 import { useMultiplayerGame } from '@/hooks/useMultiplayerGame';
 import { useSolanaGame } from '@/hooks/useSolanaGame';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     onGameEnd
 }) => {
     const wallet = useWallet();
+    const navigate = useNavigate();
     const solanaGame = useSolanaGame();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef<number>();
@@ -79,13 +81,13 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     const getShieldCost = useMemo(() => 150 + (shieldUses * 75), [shieldUses]);
     const getHealthCost = useMemo(() => 50 + (healthUses * 25), [healthUses]);
 
-    // ✅ FIX: Proper WebSocket connection with retry logic
-    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner, reconnect } = useMultiplayerGame({
+    // ✅ OPTIMIZATION: Reduce throttle to 16ms (60fps)
+    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner } = useMultiplayerGame({
         gameId,
-        enabled: true, // Always try to connect
-        onPlayerUpdate: useCallback((player: PlayerState) => {
-            console.log('📥 [WebSocket] Player update received:', player.id.slice(0, 8));
-            interpolatedPlayersRef.current.set(player.id, player);
+        enabled: true,
+        onPlayerUpdate: useCallback((playerId: string, state: PlayerState) => {
+            console.log('📥 [WebSocket] Player update received:', playerId.slice(0, 8));
+            interpolatedPlayersRef.current.set(playerId, state);
         }, []),
         onPlayerEliminated: useCallback((playerId) => {
             console.log('💀 [WebSocket] Player eliminated:', playerId.slice(0, 8));
@@ -96,9 +98,17 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             console.log('🏆 [WebSocket] Winner declared:', winnerId.slice(0, 8));
             if (winnerId === wallet.publicKey?.toBase58()) {
                 toast.success('🏆 YOU WON!');
+
+                // ✅ Navigate to Winner page
+                const game = solanaGame.games.find(g => g.gameId === gameId);
+                if (game) {
+                    setTimeout(() => {
+                        navigate(`/phase3-winner?gameId=${gameId}&winner=${winnerId}&prize=${(game.prizePool * 0.99).toFixed(4)}`);
+                    }, 3000);
+                }
             }
             setGameEnded(true);
-        }, [wallet.publicKey]),
+        }, [wallet.publicKey, solanaGame.games, gameId, navigate]),
         onGamePhaseChange: useCallback((phase) => {
             console.log('🎮 [WebSocket] Game phase changed to:', phase);
             if (phase === 'countdown') {
@@ -129,52 +139,8 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 setCountdown({ remaining, isActive: remaining > 0 });
                 if (remaining <= 0) clearInterval(countdownIntervalRef.current);
             }, 100);
-        }, []),
-        onConnect: useCallback(() => {
-            console.log('✅ [WebSocket] Connected successfully!');
-            setConnectionError(null);
-            connectionRetryRef.current = 0;
-            toast.success('Connected to game server!');
-        }, []),
-        onDisconnect: useCallback(() => {
-            console.log('❌ [WebSocket] Disconnected from server');
-            setConnectionError('Disconnected from server');
-            toast.error('Lost connection to game server');
-        }, []),
-        onError: useCallback((error: any) => {
-            console.error('💥 [WebSocket] Connection error:', error);
-            setConnectionError(error.message || 'Connection failed');
         }, [])
     });
-
-    // ✅ FIX: Auto-retry connection with exponential backoff
-    useEffect(() => {
-        if (!isConnected && !gameEnded && connectionRetryRef.current < maxRetries) {
-            const retryDelay = Math.min(1000 * Math.pow(2, connectionRetryRef.current), 10000);
-            console.log(`🔄 [WebSocket] Retry connection attempt ${connectionRetryRef.current + 1}/${maxRetries} in ${retryDelay}ms`);
-
-            const timer = setTimeout(() => {
-                connectionRetryRef.current += 1;
-                if (reconnect) {
-                    console.log('🔌 [WebSocket] Attempting reconnection...');
-                    reconnect();
-                }
-            }, retryDelay);
-
-            return () => clearTimeout(timer);
-        } else if (connectionRetryRef.current >= maxRetries && !isConnected) {
-            console.error('❌ [WebSocket] Max retries reached, giving up');
-            setConnectionError('Failed to connect after multiple attempts');
-            toast.error('Unable to connect to game server. Please refresh the page.');
-        }
-    }, [isConnected, gameEnded, reconnect]);
-
-    // ✅ FIX: Log connection status changes
-    useEffect(() => {
-        console.log('🔌 [WebSocket] Connection status:', isConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌');
-        console.log('🎮 [Game] Phase:', gamePhase);
-        console.log('👥 [Players] Other players:', otherPlayers.size);
-    }, [isConnected, gamePhase, otherPlayers.size]);
 
     const createExplosion = useCallback((x: number, y: number, color: string): void => {
         const particles: ExplosionParticle[] = [];
@@ -250,12 +216,13 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         }
     }, [wallet.publicKey, readyPlayers, sendUpdate, isConnected]);
 
+    // ✅ OPTIMIZATION: Throttled to 16ms (60fps)
     const throttledSendUpdate = useCallback((player: PlayerState) => {
-        const now = Date.now();
-        if (now - updateThrottleRef.current > 50) {
+        const now = performance.now();
+        if (now - updateThrottleRef.current > 16) {
             updateThrottleRef.current = now;
             if (isConnected) {
-                sendUpdate(player);
+                requestAnimationFrame(() => sendUpdate(player));
             }
         }
     }, [sendUpdate, isConnected]);
@@ -355,7 +322,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         }
     }, [myPlayer, virtualBalance, getSpeedCost, getShieldCost, getHealthCost, sendUpdate]);
 
-    // ✅ FIX: Better game start logic
     useEffect(() => {
         console.log('🎮 [Game Start Check]', {
             countdownActive: countdown.isActive,
@@ -376,7 +342,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         }
     }, [countdown.isActive, gameStarted, wallet.publicKey, readyPlayers.length, isConnected, initializePlayer]);
 
-    // ✅ OPTIMIZED: Fetch balance ONLY on game start and when buying power-ups
     useEffect(() => {
         const fetchBalance = async () => {
             if (!wallet.publicKey || !solanaGame || !gameStarted) return;
@@ -514,13 +479,17 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         return mouse.x >= 0 && mouse.x <= 900 && mouse.y >= 0 && mouse.y <= 700;
     }, [mouse]);
 
+    // ✅ OPTIMIZATION: Use performance.now() for high-precision timing
     const gameLoop = useCallback(() => {
         const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d', { alpha: false });
+        const ctx = canvas?.getContext('2d', {
+            alpha: false,
+            desynchronized: true // ✅ For smoother rendering
+        });
 
         if (!canvas || !ctx || !myPlayer || !gameStarted || gameEnded) return;
 
-        const now = Date.now();
+        const now = performance.now();
         const deltaTime = (now - lastUpdateTimeRef.current) / 1000;
         lastUpdateTimeRef.current = now;
 
@@ -659,15 +628,13 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                     console.log('💀 [Elimination] Sending elimination for:', myPlayer.id.slice(0, 8));
                     sendEliminated();
                     toast.error('💀 You have been eliminated!');
-
-                    // Force update player state to dead
                     setMyPlayer(prev => prev ? { ...prev, alive: false } : null);
                 }
             }
         }
 
-        // Interpolate other players
-        const interpolationFactor = Math.min(deltaTime * 10, 1);
+        // ✅ OPTIMIZATION: Smooth interpolation with deltaTime
+        const interpolationFactor = Math.min(deltaTime * 12, 1);
         otherPlayers.forEach((serverPlayer, playerId) => {
             const current = interpolatedPlayersRef.current.get(playerId);
             if (current && current.alive) {
@@ -838,7 +805,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
     useEffect(() => {
         if (gameStarted && !gameEnded && myPlayer) {
-            lastUpdateTimeRef.current = Date.now();
+            lastUpdateTimeRef.current = performance.now();
             animationRef.current = requestAnimationFrame(gameLoop);
         }
 
@@ -849,7 +816,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         };
     }, [gameStarted, gameEnded, myPlayer, gameLoop]);
 
-    // ✅ FIX: Periodic check for winner (backup for WebSocket)
     useEffect(() => {
         if (!gameStarted || gameEnded || !myPlayer || winnerDeclared) return;
 
@@ -858,17 +824,15 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
             console.log('⏰ [Periodic Check] Alive count:', aliveCount, 'My HP:', myPlayer.hp);
 
-            // If I'm the only one alive
             if (aliveCount === 1 && myPlayer.alive && !winnerDeclared) {
                 console.log('⏰ [Periodic Check] Detected winner!');
                 clearInterval(checkInterval);
             }
-        }, 2000); // Check every 2 seconds
+        }, 2000);
 
         return () => clearInterval(checkInterval);
     }, [gameStarted, gameEnded, myPlayer, otherPlayers, winnerDeclared]);
 
-    // ✅ FIX: Check for winner with better logging and simpler logic
     useEffect(() => {
         if (!gameStarted || gameEnded || !myPlayer || winnerDeclared) return;
 
@@ -885,7 +849,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             winnerDeclared
         });
 
-        // ✅ Simple check: if only 1 player alive and I'm that player
         if (aliveCount === 1 && myPlayer.alive) {
             console.log('🏆 [Winner] Declaring winner!');
             setWinnerDeclared(true);
@@ -900,7 +863,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             }, 2000);
         }
 
-        // ✅ Alternative check: if all other players are dead
         const allOthersDead = Array.from(otherPlayers.values()).every(p => !p.alive);
         if (allOthersDead && otherPlayers.size > 0 && myPlayer.alive && !winnerDeclared) {
             console.log('🏆 [Winner] All others dead, declaring winner!');
@@ -926,7 +888,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
     const remainingPlayers = Array.from(otherPlayers.values()).filter(p => p.alive).length + (myPlayer?.alive ? 1 : 0);
 
-    // COUNTDOWN SCREEN
+    // COUNTDOWN SCREEN - PĂSTRAT IDENTIC
     if (countdown.isActive && countdown.remaining > 0) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black flex items-center justify-center">
@@ -978,46 +940,12 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                             🔥 {readyPlayers.length} Warriors Ready • Winner Takes All 🔥
                         </p>
                     </div>
-
-                    {/* ✅ FIX: Better connection status display */}
-                    {!isConnected && (
-                        <div className="mt-6 bg-red-900/40 border border-red-500 rounded-lg p-4">
-                            <div className="flex items-center justify-center gap-3 mb-2">
-                                <AlertCircle className="w-6 h-6 text-red-400 animate-pulse" />
-                                <p className="text-red-300 font-semibold">
-                                    {connectionError || 'Connecting to game server...'}
-                                </p>
-                            </div>
-                            <p className="text-red-400 text-sm">
-                                Retry attempt: {connectionRetryRef.current} / {maxRetries}
-                            </p>
-                            {reconnect && connectionRetryRef.current < maxRetries && (
-                                <button
-                                    onClick={() => {
-                                        console.log('🔄 [Manual] Reconnect button clicked');
-                                        reconnect();
-                                    }}
-                                    className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
-                                >
-                                    Retry Connection
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ✅ Debug info (remove in production) */}
-                    <div className="mt-4 text-xs text-gray-500 font-mono">
-                        <div>Game ID: {gameId}</div>
-                        <div>Ready Players: {readyPlayers.length}</div>
-                        <div>Connection: {isConnected ? '✅ Connected' : '❌ Disconnected'}</div>
-                        <div>Game Phase: {gamePhase || 'unknown'}</div>
-                    </div>
                 </div>
             </div>
         );
     }
 
-    // MAIN GAME SCREEN (păstrat identic ca înainte)
+    // MAIN GAME SCREEN - PĂSTRAT IDENTIC
     return (
         <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black relative overflow-hidden">
             <ParticleBackground />
@@ -1025,7 +953,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
             <div className="fixed inset-0 bg-gradient-to-b from-transparent via-red-900/10 to-black/30 pointer-events-none"></div>
             <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.8)_100%)] pointer-events-none"></div>
 
-            {/* Top Stats Bar - MOBILE RESPONSIVE */}
+            {/* Top Stats Bar */}
             <div className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b-2 border-red-600/50 p-2 sm:p-4">
                 <div className="flex justify-center gap-2 sm:gap-8 flex-wrap text-xs sm:text-base">
                     <div className="text-center group">
@@ -1077,7 +1005,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 </div>
             </div>
 
-            {/* Power-ups Bar - MOBILE: Bottom, DESKTOP: Right */}
+            {/* Power-ups Bar */}
             <div className="fixed bottom-4 left-0 right-0 sm:right-4 sm:left-auto sm:top-1/2 sm:-translate-y-1/2 sm:bottom-auto z-40 px-4 sm:px-0">
                 <div className="bg-black/90 backdrop-blur-xl border-2 border-red-600/50 rounded-xl p-3 sm:p-4 shadow-2xl shadow-red-900/50 max-w-full sm:max-w-[200px] mx-auto">
                     <div className="text-center mb-2 sm:mb-3">
@@ -1135,7 +1063,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 </div>
             </div>
 
-            {/* Game Canvas - MOBILE FRIENDLY */}
+            {/* Game Canvas */}
             <div className="flex items-start justify-center min-h-screen pt-16 sm:pt-24 pb-20 sm:pb-8 px-2 sm:px-4">
                 <div className="bg-gradient-to-br from-black/90 to-red-950/40 backdrop-blur-xl border-2 sm:border-4 border-red-600/60 rounded-xl sm:rounded-2xl p-2 sm:p-4 shadow-2xl shadow-red-900/70 relative overflow-hidden w-full max-w-[920px]">
                     <div className="absolute top-0 left-0 w-full h-1 sm:h-2 bg-gradient-to-r from-red-600 via-orange-500 to-red-600 animate-pulse"></div>
@@ -1197,13 +1125,11 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                                     {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
                                 </div>
                                 <div className="text-sm text-red-300">Time Survived</div>
-                                <div className="text-xs text-red-400 mt-1">Every second was a victory</div>
                             </div>
 
                             <div className="bg-black/60 border border-red-500/50 rounded-lg p-4">
                                 <div className="text-3xl font-bold text-red-400 mb-2">{eliminated}</div>
                                 <div className="text-sm text-red-300">Players Eliminated</div>
-                                <div className="text-xs text-red-400 mt-1">Casualties of war</div>
                             </div>
 
                             <div className="bg-black/60 border border-red-500/50 rounded-lg p-4">
@@ -1211,7 +1137,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                                     {Math.round(safeZone.radius)}m
                                 </div>
                                 <div className="text-sm text-red-300">Final Zone Size</div>
-                                <div className="text-xs text-red-400 mt-1">The last battlefield</div>
                             </div>
                         </div>
 

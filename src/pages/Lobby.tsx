@@ -138,20 +138,40 @@ export default function Lobby() {
     const stats = new Map<string, { wins: number; earnings: number; gamesPlayed: number }>();
 
     solanaGame.games.forEach(game => {
-      game.players.forEach(player => {
-        if (!stats.has(player)) {
-          stats.set(player, { wins: 0, earnings: 0, gamesPlayed: 0 });
+      const gamePlayers: string[] = [];
+
+      if (game.players && game.players.length > 0) {
+        if (typeof game.players[0] === 'string') {
+          gamePlayers.push(...game.players);
+        } else if (game.players[0].player) {
+          gamePlayers.push(...game.players.map((p: any) =>
+            typeof p.player === 'string' ? p.player : p.player.toString()
+          ));
         }
-        const playerStat = stats.get(player)!;
+      }
+
+      gamePlayers.forEach(playerAddress => {
+        if (!stats.has(playerAddress)) {
+          stats.set(playerAddress, { wins: 0, earnings: 0, gamesPlayed: 0 });
+        }
+        const playerStat = stats.get(playerAddress)!;
         playerStat.gamesPlayed += 1;
 
-        // Check if this player won
-        if (normalizeStatus(game.status) === 'Completed' && game.phase3Winner === player) {
+        const normalized = normalizeStatus(game.status);
+        const isWinner = game.phase3Winner === playerAddress;
+        const prizeClaimed = game.phase3PrizeClaimed === true;
+
+        if (normalized === 'Completed' && isWinner && prizeClaimed) {
           playerStat.wins += 1;
-          // Check if prize was claimed - DOAR dacă e claimed se adaugă la earnings
-          if (game.phase3PrizeClaimed) {
-            playerStat.earnings += game.prizePool * 0.99; // 99% after fee
-          }
+
+          // ✅ CALCULATE PRIZE POOL: (players × entry fee) - 1% platform fee
+          const calculatedPrizePool = game.currentPlayers * game.entryFee * 0.99;
+          playerStat.earnings += calculatedPrizePool;
+
+          console.log(`[Lobby Stats] ✅ Added ${calculatedPrizePool.toFixed(4)} SOL (${game.currentPlayers} players × ${game.entryFee} SOL) to ${playerAddress.slice(0, 8)}`);
+        } else if (normalized === 'Completed' && isWinner && !prizeClaimed) {
+          playerStat.wins += 1;
+          console.log(`[Lobby Stats] ⏳ Prize not yet claimed for ${playerAddress.slice(0, 8)}`);
         }
       });
     });
@@ -328,12 +348,16 @@ export default function Lobby() {
   const leaderboardData = Array.from(playerStats.entries())
     .map(([player, stats]) => ({ player, ...stats }))
     .sort((a, b) => {
-      // Sort by wins first
+      // 1. Sort by wins first (descending)
       if (b.wins !== a.wins) return b.wins - a.wins;
-      // Tiebreaker: earnings
-      return b.earnings - a.earnings;
+
+      // 2. Tiebreaker: games played (descending)
+      if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
+
+      // 3. Final tiebreaker: publicKey alphabetically (ascending)
+      return a.player.localeCompare(b.player);
     })
-    .slice(0, 4); // Only top 4
+    .slice(0, 4);
 
   const getStatusColor = (status: string) => {
     const normalized = normalizeStatus(status);
@@ -471,12 +495,9 @@ export default function Lobby() {
     const targetGame = game || selectedGame;
 
     console.log('💰 ============ HANDLE CLAIM PRIZE START ============');
-    console.log('💰 Function called!');
     console.log('💰 targetGame:', targetGame);
     console.log('💰 wallet.connected:', wallet.connected);
     console.log('💰 phase3PrizeClaimed BEFORE:', targetGame?.phase3PrizeClaimed);
-    console.log('💰 prizePool BEFORE:', targetGame?.prizePool);
-    console.log('💰 ============================================');
 
     if (!targetGame || !wallet.connected) {
       console.error('❌ Early return - missing requirements');
@@ -501,29 +522,46 @@ export default function Lobby() {
           description: `You've claimed ${(targetGame.prizePool * 0.99).toFixed(4)} SOL!`,
         });
 
-        // ✅ CRITICAL: Triple refresh to ensure phase3PrizeClaimed updates
-        console.log('🔄 Force refreshing games (1/3)...');
-        await solanaGame.fetchGames();
+        // ✅ CRITICAL: Aggressive refresh loop to ensure phase3PrizeClaimed updates
+        console.log('🔄 Starting aggressive refresh loop...');
+        let refreshCount = 0;
+        const maxRefreshes = 10;
+        let prizeClaimed = false;
 
-        console.log('⏳ Waiting 1 second for blockchain state...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        while (refreshCount < maxRefreshes && !prizeClaimed) {
+          refreshCount++;
+          console.log(`🔄 Refresh attempt ${refreshCount}/${maxRefreshes}...`);
 
-        console.log('🔄 Force refreshing games (2/3)...');
-        await solanaGame.fetchGames();
+          await solanaGame.fetchGames();
 
-        console.log('⏳ Waiting 1 more second...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+          // Check if phase3PrizeClaimed is now true
+          const updatedGame = solanaGame.games.find(g => g.gameId === targetGame.gameId);
+          console.log(`💰 phase3PrizeClaimed after refresh ${refreshCount}:`, updatedGame?.phase3PrizeClaimed);
 
-        console.log('🔄 Force refreshing games (3/3)...');
-        await solanaGame.fetchGames();
+          if (updatedGame?.phase3PrizeClaimed) {
+            prizeClaimed = true;
+            console.log('✅ Prize claim confirmed on blockchain!');
+            break;
+          }
 
-        // Log the updated game state
-        const updatedGame = solanaGame.games.find(g => g.gameId === targetGame.gameId);
-        console.log('💰 phase3PrizeClaimed AFTER:', updatedGame?.phase3PrizeClaimed);
-        console.log('💰 prizePool AFTER:', updatedGame?.prizePool);
+          // Wait 1 second between refreshes
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
 
-        console.log('✅ Games refreshed, closing modal...');
+        if (!prizeClaimed) {
+          console.warn('⚠️ phase3PrizeClaimed not updated after 10 attempts, but claim was successful');
+          toast({
+            title: "Note",
+            description: "Prize claimed successfully! Stats may take a moment to update.",
+          });
+        } else {
+          toast({
+            title: "Stats Updated!",
+            description: "Your earnings have been updated successfully!",
+          });
+        }
 
+        // Close modal
         if (showGameDetailsModal) {
           setShowGameDetailsModal(false);
           setSelectedGame(null);
@@ -1037,7 +1075,7 @@ export default function Lobby() {
                           {game.phase3Winner.slice(0, 8)}...{game.phase3Winner.slice(-8)}
                         </div>
                         <div className="text-xs mt-1" style={{ color: 'hsl(50, 100%, 50%)' }}>
-                          Prize: {(game.prizePool * 0.99).toFixed(4)} SOL
+                          Prize:  {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
                           {game.phase3PrizeClaimed ? ' ✓ Claimed' : ' (Unclaimed)'}
                         </div>
                       </div>
@@ -1054,7 +1092,7 @@ export default function Lobby() {
                       <div className="flex items-center gap-2">
                         <Trophy className="w-4 h-4" style={{ color: 'hsl(50, 100%, 60%)' }} />
                         <span className="text-sm font-medium" style={{ color: 'hsl(50, 100%, 60%)' }}>
-                          {game.prizePool.toFixed(2)} SOL
+                          {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
