@@ -12,7 +12,7 @@ export default function Hero({ onNavigateToRegister }: HeroProps) {
     if (onNavigateToRegister) {
       onNavigateToRegister();
     } else {
-      navigate('/how-to-play');
+      navigate('/how-it-works');
     }
   };
 

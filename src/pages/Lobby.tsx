@@ -4,6 +4,7 @@ import { ArrowLeft, Users, Clock, Trophy, TrendingUp, Play, UserPlus, Eye, Crown
 import ParticleBackground from "../components/ParticleBackground";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import FirstTimeTutorial from "../components/FirstTimeTutorial";
 import CountdownTimer from "../components/CountdownTimer";
 import { useSolanaGame } from "../hooks/useSolanaGame";
 import type { Game } from "../hooks/useSolanaGame";
@@ -115,6 +116,8 @@ export default function Lobby() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGameDetailsModal, setShowGameDetailsModal] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [pendingGameId, setPendingGameId] = useState<number | null>(null);
   const [createGameParams, setCreateGameParams] = useState({
     gameName: '',
     entryFee: 1,
@@ -202,9 +205,21 @@ export default function Lobby() {
       wins: stats.wins,
       earnings: stats.earnings,
       gamesPlayed: stats.gamesPlayed,
-      rank: rank > 0 ? rank : sortedPlayers.length + 1 // Dacă nu e găsit, pune-l ultimul
+      rank: rank > 0 ? rank : sortedPlayers.length + 1
     };
   })();
+
+  // Check if user has ever played any game
+  const hasUserEverPlayed = (): boolean => {
+    if (!wallet.publicKey) return false;
+
+    const userAddress = wallet.publicKey.toBase58();
+
+    // Check if user appears as a player in ANY game
+    return solanaGame.games.some(game =>
+      game.players.includes(userAddress)
+    );
+  };
 
   // Filter and sort games
   const filteredAndSortedGames = solanaGame.games
@@ -395,16 +410,11 @@ export default function Lobby() {
     setShowGameDetailsModal(true);
   };
 
-  const handleConfirmJoinGame = async () => {
-    console.log('🎮 Enter the Game button clicked!');
-    if (!selectedGame || !wallet.connected) {
-      console.error('❌ Missing requirements');
-      return;
-    }
-
+  // Function to perform the actual game join
+  const performGameJoin = async (gameId: number) => {
     try {
-      console.log('🚀 Calling solanaGame.enterGame with gameId:', selectedGame.gameId);
-      const result = await solanaGame.enterGame(selectedGame.gameId);
+      console.log('🚀 Calling solanaGame.enterGame with gameId:', gameId);
+      const result = await solanaGame.enterGame(gameId);
 
       if (result === 'already_processed') {
         console.log('🎉 Join was already successful!');
@@ -414,6 +424,10 @@ export default function Lobby() {
         });
       } else {
         console.log('✅ Successfully joined game!');
+        toast({
+          title: "Game Joined!",
+          description: "You've successfully entered the battle!",
+        });
       }
 
       // Refresh games and close modal
@@ -429,6 +443,37 @@ export default function Lobby() {
           description: error.message || "Unknown error",
         });
       }
+    }
+  };
+
+  const handleConfirmJoinGame = async () => {
+    console.log('🎮 Enter the Game button clicked!');
+    if (!selectedGame || !wallet.connected) {
+      console.error('❌ Missing requirements');
+      return;
+    }
+
+    // ✅ CHECK: Has user ever played before?
+    if (!hasUserEverPlayed()) {
+      console.log('🎓 First time player detected! Showing tutorial...');
+      setPendingGameId(selectedGame.gameId);
+      setShowTutorial(true);
+      setShowGameDetailsModal(false); // Close game details modal
+      return; // Don't join yet, wait for tutorial completion
+    }
+
+    // If user has played before, join directly
+    await performGameJoin(selectedGame.gameId);
+  };
+
+  // Handler for when tutorial completes
+  const handleTutorialComplete = async () => {
+    console.log('✅ Tutorial completed! Proceeding to join game...');
+    setShowTutorial(false);
+
+    if (pendingGameId !== null) {
+      await performGameJoin(pendingGameId);
+      setPendingGameId(null);
     }
   };
 
@@ -665,6 +710,14 @@ export default function Lobby() {
     <div className="min-h-screen relative">
       <ParticleBackground />
       <Navbar />
+
+      {/* Tutorial Modal - Shows only for first-time players when joining */}
+      {showTutorial && pendingGameId !== null && (
+        <FirstTimeTutorial
+          gameId={pendingGameId}
+          onComplete={handleTutorialComplete}
+        />
+      )}
 
       <div className="container mx-auto px-4 pt-24 pb-16 relative z-10">
         {/* Header */}

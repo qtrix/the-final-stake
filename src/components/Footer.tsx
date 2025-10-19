@@ -6,10 +6,8 @@ export default function Footer() {
   const navigate = useNavigate();
 
   const communityLinks = [
-    { name: 'Discord', url: '', icon: '💬' },
-    { name: 'Telegram', url: '', icon: '📨' },
-    { name: 'X (Twitter)', url: '', icon: '🐦' },
-    { name: 'GitHub', url: '', icon: '📄' },
+    { name: 'Discord', url: 'https://discord.gg/vJwrA2hN', icon: '💬' },
+    { name: 'Telegram', url: 'https://t.me/+QjCU0Ixpb7gyNDVk', icon: '📨' },
   ];
 
   const platformLinks = [

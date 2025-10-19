@@ -18,6 +18,7 @@ import SpeedTrading from "./pages/games/SpeedTrading";
 import MemeBattles from "./pages/games/MemeBattles";
 import HowToPlay from './pages/HowToPlay';
 import Phase3Winner from './pages/Phase3Winner';
+import Team from "./pages/Team";
 
 const queryClient = new QueryClient();
 
@@ -41,7 +42,8 @@ const App = () => (
           <Route path="/games/meme-battles" element={<MemeBattles />} />
           <Route path="/tokenomics" element={<Tokenomics />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/how-to-play" element={<HowToPlay />} />
+          <Route path="/how-it-works" element={<HowToPlay />} />
+          <Route path="/team" element={<Team />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
