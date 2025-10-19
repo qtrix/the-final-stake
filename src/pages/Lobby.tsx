@@ -515,12 +515,46 @@ export default function Lobby() {
 
       if (result === 'already_processed' || result) {
         console.log('✅ Refund claimed successfully!');
+        toast({
+          title: "Refund Claimed!",
+          description: `You've claimed ${selectedGame.entryFee.toFixed(2)} SOL!`,
+        });
         await solanaGame.fetchGames();
         setShowGameDetailsModal(false);
         setSelectedGame(null);
       }
     } catch (error: any) {
       console.error('❌ Failed to claim refund:', error);
+      if (!error.message?.includes('already been processed')) {
+        toast({
+          variant: "destructive",
+          title: "Failed to claim refund",
+          description: error.message || "Unknown error",
+        });
+      }
+    }
+  };
+
+  // ✅ NOUĂ FUNCȚIE - Force Refund
+  const handleForceRefund = async () => {
+    if (!selectedGame || !wallet.connected) return;
+
+    try {
+      console.log('💰 Forcing refund for game:', selectedGame.gameId);
+      const result = await solanaGame.forceRefundExpiredGame(selectedGame.gameId);
+
+      if (result === 'already_processed' || result) {
+        console.log('✅ Force refund successful!');
+        toast({
+          title: "Refund Claimed!",
+          description: `You've claimed ${selectedGame.entryFee.toFixed(2)} SOL! Creator failed to fulfill obligations.`,
+        });
+        await solanaGame.fetchGames();
+        setShowGameDetailsModal(false);
+        setSelectedGame(null);
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to force refund:', error);
       if (!error.message?.includes('already been processed')) {
         toast({
           variant: "destructive",
@@ -635,6 +669,10 @@ export default function Lobby() {
 
       if (result === 'already_processed' || result) {
         console.log('✅ Game cancelled successfully!');
+        toast({
+          title: "Game Cancelled",
+          description: "Your funds have been returned!",
+        });
         await solanaGame.fetchGames();
         setShowGameDetailsModal(false);
         setSelectedGame(null);
@@ -1077,13 +1115,6 @@ export default function Lobby() {
               const isWinner = isCompleted && game.phase3Winner === wallet.publicKey?.toBase58();
               const canClaimPrize = isWinner && !game.phase3PrizeClaimed;
 
-              console.log(`[Game ${game.gameId}] Claim button check:`, {
-                isCompleted,
-                isWinner,
-                phase3PrizeClaimed: game.phase3PrizeClaimed,
-                canClaimPrize
-              });
-
               return (
                 <div
                   key={game.gameId}
@@ -1128,7 +1159,7 @@ export default function Lobby() {
                           {game.phase3Winner.slice(0, 8)}...{game.phase3Winner.slice(-8)}
                         </div>
                         <div className="text-xs mt-1" style={{ color: 'hsl(50, 100%, 50%)' }}>
-                          Prize:  {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
+                          Prize: {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
                           {game.phase3PrizeClaimed ? ' ✓ Claimed' : ' (Unclaimed)'}
                         </div>
                       </div>
@@ -1167,7 +1198,6 @@ export default function Lobby() {
                           className="flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
                           onClick={(e) => {
                             e.stopPropagation();
-                            console.log('🎯 Claim button clicked from card for game:', game.gameId);
                             handleClaimPrize(game);
                           }}
                           disabled={isClaiming}
@@ -1532,13 +1562,17 @@ export default function Lobby() {
                     </button>
                   )}
 
-                {/* Start Button */}
-                {(normalizeStatus(selectedGame.status) === 'WaitingForPlayers' ||
-                  normalizeStatus(selectedGame.status) === 'ReadyToStart') &&
-                  selectedGame.creator === wallet.publicKey?.toBase58() &&
-                  Date.now() >= selectedGame.startTime.getTime() &&
-                  Date.now() < selectedGame.expireTime.getTime() &&
-                  selectedGame.currentPlayers >= 3 && (
+                {/* Start Button - Creator poate porni jocul cu ≥3 jucători în primele 30 min */}
+                {(() => {
+                  const thirtyMinutesAfterStart = selectedGame.startTime.getTime() + 30 * 60 * 1000;
+                  const canStart = normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
+                    selectedGame.creator === wallet.publicKey?.toBase58() &&
+                    !selectedGame.gameStarted &&
+                    selectedGame.currentPlayers >= 3 &&
+                    Date.now() >= selectedGame.startTime.getTime() &&
+                    Date.now() <= thirtyMinutesAfterStart;
+
+                  return canStart ? (
                     <button
                       onClick={handleStartGame}
                       disabled={solanaGame.loading}
@@ -1553,15 +1587,20 @@ export default function Lobby() {
                       <Play className="w-4 h-4" />
                       {solanaGame.loading ? 'Starting...' : 'Start Game'}
                     </button>
-                  )}
+                  ) : null;
+                })()}
 
-                {/* Cancel Button */}
-                {normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
-                  selectedGame.creator === wallet.publicKey?.toBase58() &&
-                  Date.now() >= selectedGame.startTime.getTime() &&
-                  Date.now() < selectedGame.expireTime.getTime() &&
-                  selectedGame.currentPlayers < 3 &&
-                  !selectedGame.gameStarted && (
+                {/* Cancel Button - Creator poate anula cu <3 jucători în primele 30 min */}
+                {(() => {
+                  const thirtyMinutesAfterStart = selectedGame.startTime.getTime() + 30 * 60 * 1000;
+                  const canCancel = normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
+                    selectedGame.creator === wallet.publicKey?.toBase58() &&
+                    !selectedGame.gameStarted &&
+                    selectedGame.currentPlayers < 3 &&
+                    Date.now() >= selectedGame.startTime.getTime() &&
+                    Date.now() <= thirtyMinutesAfterStart;
+
+                  return canCancel ? (
                     <button
                       onClick={handleCreatorCancel}
                       disabled={solanaGame.loading}
@@ -1574,22 +1613,58 @@ export default function Lobby() {
                       }}
                     >
                       <XCircle className="w-4 h-4" />
-                      {solanaGame.loading ? 'Cancelling...' : 'Cancel & Refund'}
+                      {solanaGame.loading ? 'Cancelling...' : 'Cancel & Claim Refund'}
                     </button>
-                  )}
+                  ) : null;
+                })()}
 
-                {/* Refund Button */}
+                {/* Force Refund Button - Players pot forța refund după 30 min dacă creator nu și-a făcut datoria */}
+                {(() => {
+                  const thirtyMinutesAfterStart = selectedGame.startTime.getTime() + 30 * 60 * 1000;
+                  const isPlayerInGame = selectedGame.players.includes(wallet.publicKey?.toBase58() || '');
+                  const hasClaimedRefund = selectedGame.refundedPlayers.includes(wallet.publicKey?.toBase58() || '');
+
+                  const canForceRefund = normalizeStatus(selectedGame.status) === 'WaitingForPlayers' &&
+                    isPlayerInGame &&
+                    !hasClaimedRefund &&
+                    !selectedGame.gameStarted &&
+                    Date.now() >= thirtyMinutesAfterStart;
+
+                  return canForceRefund ? (
+                    <button
+                      onClick={handleForceRefund}
+                      disabled={solanaGame.loading}
+                      className="flex-1 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                      style={{
+                        background: 'linear-gradient(135deg, hsl(50, 100%, 35%), hsl(50, 100%, 50%))',
+                        color: 'black',
+                        border: 'none',
+                        boxShadow: '0 5px 15px hsla(50, 100%, 35%, 0.4)'
+                      }}
+                    >
+                      <Trophy className="w-4 h-4" />
+                      {solanaGame.loading ? 'Claiming...' : `Force Refund (${selectedGame.entryFee.toFixed(2)} SOL)`}
+                    </button>
+                  ) : null;
+                })()}
+
+                {/* Regular Refund Button - pentru statusuri Cancelled/Expired/ExpiredWithPenalty */}
                 {(() => {
                   const normalized = normalizeStatus(selectedGame.status);
                   const isPlayerInGame = selectedGame.players.includes(wallet.publicKey?.toBase58() || '');
                   const hasClaimedRefund = selectedGame.refundedPlayers.includes(wallet.publicKey?.toBase58() || '');
                   const isCreator = selectedGame.creator === wallet.publicKey?.toBase58();
 
+                  // Creator NU poate lua refund dacă statusul e ExpiredWithPenalty
+                  if (isCreator && normalized === 'ExpiredWithPenalty') {
+                    return null;
+                  }
+
                   const canClaimRefund = isPlayerInGame && !hasClaimedRefund && (
                     normalized === 'Cancelled' ||
                     normalized === 'Expired' ||
-                    (normalized === 'Expiredwithpenalty' && !isCreator) ||
-                    (normalized === 'ExpiredWithPenalty' && !isCreator)
+                    normalized === 'Expiredwithpenalty' ||
+                    normalized === 'ExpiredWithPenalty'
                   );
 
                   return canClaimRefund ? (

@@ -1,5 +1,5 @@
 {
-  "address": "95SKb14wtHQqKCqSZXEt4p4wLKdLVxDQWHRimE8T59Rm",
+  "address": "7wE7jfxvtfheakToTNGouWr8Z3NrMqeyDNQbY7Wsx4FF",
   "metadata": {
     "name": "solana_survivor",
     "version": "0.1.0",
@@ -467,6 +467,31 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "force_refund_expired_game",
+      "discriminator": [
+        64,
+        244,
+        63,
+        52,
+        40,
+        66,
+        88,
+        102
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
         }
       ],
       "args": []
@@ -1011,6 +1036,32 @@
       ]
     },
     {
+      "name": "ForcedRefundClaimed",
+      "discriminator": [
+        141,
+        178,
+        124,
+        165,
+        63,
+        156,
+        255,
+        186
+      ]
+    },
+    {
+      "name": "GameCancelled",
+      "discriminator": [
+        113,
+        20,
+        200,
+        104,
+        76,
+        35,
+        9,
+        241
+      ]
+    },
+    {
       "name": "GameCreated",
       "discriminator": [
         218,
@@ -1021,6 +1072,19 @@
         112,
         96,
         2
+      ]
+    },
+    {
+      "name": "GameExpiredWithPenalty",
+      "discriminator": [
+        60,
+        75,
+        187,
+        51,
+        175,
+        91,
+        36,
+        179
       ]
     },
     {
@@ -1076,19 +1140,6 @@
       ]
     },
     {
-      "name": "Phase3PrizeRedistributed",
-      "discriminator": [
-        40,
-        225,
-        185,
-        204,
-        7,
-        21,
-        56,
-        39
-      ]
-    },
-    {
       "name": "Phase3WinnerDeclared",
       "discriminator": [
         79,
@@ -1125,6 +1176,19 @@
         210,
         183,
         38
+      ]
+    },
+    {
+      "name": "RefundClaimed",
+      "discriminator": [
+        136,
+        64,
+        242,
+        99,
+        4,
+        244,
+        208,
+        130
       ]
     }
   ],
@@ -1182,7 +1246,7 @@
     {
       "code": 6010,
       "name": "NotEnoughPlayers",
-      "msg": "Not enough players"
+      "msg": "Not enough players (minimum 3 required)"
     },
     {
       "code": 6011,
@@ -1348,6 +1412,31 @@
       "code": 6043,
       "name": "MathOverflow",
       "msg": "Math overflow"
+    },
+    {
+      "code": 6044,
+      "name": "StartWindowExpired",
+      "msg": "Start window expired (30 minutes passed since start_time)"
+    },
+    {
+      "code": 6045,
+      "name": "CancelWindowExpired",
+      "msg": "Cancel window expired (30 minutes passed since start_time)"
+    },
+    {
+      "code": 6046,
+      "name": "RefundNotYetAvailable",
+      "msg": "Refund not yet available (must wait 30 minutes after start_time)"
+    },
+    {
+      "code": 6047,
+      "name": "InvalidRefundCondition",
+      "msg": "Invalid refund condition"
+    },
+    {
+      "code": 6048,
+      "name": "CreatorForfeitedFunds",
+      "msg": "Creator forfeited funds by not fulfilling obligations"
     }
   ],
   "types": [
@@ -1474,6 +1563,26 @@
           },
           {
             "name": "ForcedAccept"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ForcedRefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }
@@ -1609,6 +1718,22 @@
       }
     },
     {
+      "name": "GameCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "cancelled_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "GameCreated",
       "type": {
         "kind": "struct",
@@ -1640,6 +1765,26 @@
           {
             "name": "phase2_max_games_per_opponent",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameExpiredWithPenalty",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "expired_at",
+            "type": "i64"
+          },
+          {
+            "name": "reason",
+            "type": "string"
           }
         ]
       }
@@ -1862,26 +2007,6 @@
       }
     },
     {
-      "name": "Phase3PrizeRedistributed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
       "name": "Phase3ReadyState",
       "type": {
         "kind": "struct",
@@ -2055,6 +2180,26 @@
           {
             "name": "current_players",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }

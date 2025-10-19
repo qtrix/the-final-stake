@@ -1527,6 +1527,31 @@ export function useSolanaGame() {
       setLoading(false);
     }
   };
+  const forceRefundExpiredGame = async (gameId: number) => {
+    if (!program || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+
+      const tx = await program.methods
+        .forceRefundExpiredGame()
+        .accounts({
+          game: gamePDA,
+          player: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
+
+      await confirmTransaction(program.provider.connection, tx);
+      toast.success('💰 Refund claimed!');
+      await fetchGames(program);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return {
     program,
@@ -1565,5 +1590,6 @@ export function useSolanaGame() {
     claimPlatformFee,
     submitPhase3Winner,
     claimPhase3Prize,
+    forceRefundExpiredGame,
   };
 }
