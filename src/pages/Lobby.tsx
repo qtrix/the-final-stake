@@ -1396,7 +1396,7 @@ export default function Lobby() {
                     {selectedGame.phase3Winner.slice(0, 12)}...{selectedGame.phase3Winner.slice(-12)}
                   </div>
                   <div className="text-sm" style={{ color: 'hsl(50, 100%, 50%)' }}>
-                    Prize: {(selectedGame.prizePool * 0.99).toFixed(4)} SOL
+                    Prize: {(selectedGame.currentPlayers * selectedGame.entryFee * 0.99).toFixed(4)} SOL
                     {selectedGame.phase3PrizeClaimed ? ' ✓ Claimed' : ' (Unclaimed)'}
                   </div>
                 </div>
