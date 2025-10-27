@@ -89,7 +89,7 @@ export default function Footer() {
                 </button>
               ))}
               <a
-                href="https://genuine-rolypoly-b3aa60.netlify.app/whitepaper.pdf"
+                href="https://finalstake.gitbook.io/final-stake/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-left text-muted-foreground hover:text-secondary 

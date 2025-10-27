@@ -1,4 +1,5 @@
-// src/pages/Phase3Winner.tsx - Winner Page with Confetti
+// src/pages/Phase3Winner.tsx - Winner Page (UPDATED)
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -34,7 +35,8 @@ const Phase3Winner: React.FC = () => {
             const animationEnd = Date.now() + duration;
             const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
-            const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+            const randomInRange = (min: number, max: number) =>
+                Math.random() * (max - min) + min;
 
             const interval = setInterval(() => {
                 const timeLeft = animationEnd - Date.now();
@@ -62,18 +64,25 @@ const Phase3Winner: React.FC = () => {
     }, [isWinner]);
 
     const handleClaimPrize = async () => {
-        if (!solanaGame || !wallet.publicKey) return;
+        if (!solanaGame || !wallet.publicKey) {
+            toast.error('Wallet not connected');
+            return;
+        }
 
         setClaiming(true);
         try {
+            console.log('[Winner] Claiming prize for game:', gameId);
+
+            // Execute Solana transaction to claim prize
             await solanaGame.claimPhase3Prize(gameId);
 
             toast.success('🎉 Prize claimed successfully!');
             setClaimed(true);
 
+            // Refresh game state
             await solanaGame.refreshGames();
         } catch (error: any) {
-            console.error('Failed to claim prize:', error);
+            console.error('[Winner] Failed to claim prize:', error);
             toast.error(error.message || 'Failed to claim prize');
         } finally {
             setClaiming(false);
@@ -91,6 +100,7 @@ const Phase3Winner: React.FC = () => {
             <main className="relative z-10 container mx-auto px-4 pt-24 pb-16">
                 <div className="max-w-4xl mx-auto">
 
+                    {/* Victory/Defeat Header */}
                     {isWinner ? (
                         <div className="text-center mb-12">
                             <div className="text-9xl mb-6 animate-bounce">👑</div>
@@ -155,6 +165,7 @@ const Phase3Winner: React.FC = () => {
                                 </p>
                             </div>
 
+                            {/* Claim Button */}
                             {isWinner && !claimed && (
                                 <Button
                                     onClick={handleClaimPrize}
@@ -175,6 +186,7 @@ const Phase3Winner: React.FC = () => {
                                 </Button>
                             )}
 
+                            {/* Claimed Confirmation */}
                             {claimed && (
                                 <div className="bg-green-900/30 border-2 border-green-500 rounded-lg p-6 text-center">
                                     <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
@@ -193,7 +205,9 @@ const Phase3Winner: React.FC = () => {
                     <div className="grid md:grid-cols-3 gap-6 mb-8">
                         <Card className="bg-gradient-to-br from-blue-900/30 to-blue-800/20 border-blue-500/30">
                             <CardContent className="pt-6 text-center">
-                                <p className="text-4xl font-bold text-blue-400 mb-2">Game #{gameId}</p>
+                                <p className="text-4xl font-bold text-blue-400 mb-2">
+                                    Game #{gameId}
+                                </p>
                                 <p className="text-sm text-gray-400">Game ID</p>
                             </CardContent>
                         </Card>
@@ -213,7 +227,7 @@ const Phase3Winner: React.FC = () => {
                         </Card>
                     </div>
 
-                    {/* Game Summary */}
+                    {/* Game Summary (Winner Only) */}
                     {isWinner && (
                         <Card className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-gray-700 mb-8">
                             <CardContent className="pt-6">
@@ -223,15 +237,21 @@ const Phase3Winner: React.FC = () => {
                                 <div className="space-y-4 text-gray-300">
                                     <div className="flex justify-between items-center p-3 bg-black/30 rounded-lg">
                                         <span>Total Prize Pool:</span>
-                                        <span className="font-bold text-green-400">{(prizeAmount / 0.99).toFixed(4)} SOL</span>
+                                        <span className="font-bold text-green-400">
+                                            {(prizeAmount / 0.99).toFixed(4)} SOL
+                                        </span>
                                     </div>
                                     <div className="flex justify-between items-center p-3 bg-black/30 rounded-lg">
                                         <span>Platform Fee (1%):</span>
-                                        <span className="font-bold text-red-400">{((prizeAmount / 0.99) * 0.01).toFixed(4)} SOL</span>
+                                        <span className="font-bold text-red-400">
+                                            {((prizeAmount / 0.99) * 0.01).toFixed(4)} SOL
+                                        </span>
                                     </div>
                                     <div className="flex justify-between items-center p-3 bg-green-900/30 rounded-lg border-2 border-green-500">
                                         <span className="font-bold">Your Prize (99%):</span>
-                                        <span className="font-black text-2xl text-green-400">{prizeAmount.toFixed(4)} SOL</span>
+                                        <span className="font-black text-2xl text-green-400">
+                                            {prizeAmount.toFixed(4)} SOL
+                                        </span>
                                     </div>
                                 </div>
                             </CardContent>

@@ -1,3 +1,5 @@
+// PurgeGameMultiplayer.tsx - COMPLETE with ALL features + sync fixes
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -81,67 +83,9 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     const getShieldCost = useMemo(() => 150 + (shieldUses * 75), [shieldUses]);
     const getHealthCost = useMemo(() => 50 + (healthUses * 25), [healthUses]);
 
-    // ✅ OPTIMIZATION: Reduce throttle to 16ms (60fps)
-    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner } = useMultiplayerGame({
-        gameId,
-        enabled: true,
-        onPlayerUpdate: useCallback((playerId: string, state: PlayerState) => {
-            console.log('📥 [WebSocket] Player update received:', playerId.slice(0, 8));
-            interpolatedPlayersRef.current.set(playerId, state);
-        }, []),
-        onPlayerEliminated: useCallback((playerId) => {
-            console.log('💀 [WebSocket] Player eliminated:', playerId.slice(0, 8));
-            setEliminated(prev => prev + 1);
-            toast.error('Player eliminated!');
-        }, []),
-        onWinnerDeclared: useCallback((winnerId) => {
-            console.log('🏆 [WebSocket] Winner declared:', winnerId.slice(0, 8));
-            if (winnerId === wallet.publicKey?.toBase58()) {
-                toast.success('🏆 YOU WON!');
-
-                // ✅ Navigate to Winner page
-                const game = solanaGame.games.find(g => g.gameId === gameId);
-                if (game) {
-                    setTimeout(() => {
-                        navigate(`/phase3-winner?gameId=${gameId}&winner=${winnerId}&prize=${(game.prizePool * 0.99).toFixed(4)}`);
-                    }, 3000);
-                }
-            }
-            setGameEnded(true);
-        }, [wallet.publicKey, solanaGame.games, gameId, navigate]),
-        onGamePhaseChange: useCallback((phase) => {
-            console.log('🎮 [WebSocket] Game phase changed to:', phase);
-            if (phase === 'countdown') {
-                setCountdown({ remaining: 15, isActive: true });
-                toast.info('⚔️ Battle starting in 15 seconds...');
-            } else if (phase === 'active') {
-                setGameStarted(true);
-                initializePlayer();
-                toast.success('🎮 Battle started!');
-            } else if (phase === 'ended') {
-                setGameEnded(true);
-            }
-        }, []),
-        onCountdownSync: useCallback((startTime: number, duration: number) => {
-            console.log('⏱️ [WebSocket] Countdown synced:', { startTime, duration });
-            const calculateRemaining = () => {
-                const now = Date.now();
-                const endTime = startTime + duration;
-                return Math.max(0, Math.ceil((endTime - now) / 1000));
-            };
-
-            setCountdown({ remaining: calculateRemaining(), isActive: true });
-
-            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-
-            countdownIntervalRef.current = setInterval(() => {
-                const remaining = calculateRemaining();
-                setCountdown({ remaining, isActive: remaining > 0 });
-                if (remaining <= 0) clearInterval(countdownIntervalRef.current);
-            }, 100);
-        }, [])
-    });
-
+    // ===================================
+    // ✅ FIX: Mutăm funcțiile ÎNAINTE de hook
+    // ===================================
     const createExplosion = useCallback((x: number, y: number, color: string): void => {
         const particles: ExplosionParticle[] = [];
         for (let i = 0; i < 15; i++) {
@@ -207,14 +151,78 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
         setMyPlayer(initialPlayer);
         interpolatedPlayersRef.current.set(initialPlayer.id, initialPlayer);
+    }, [wallet.publicKey, readyPlayers]);
 
-        if (isConnected) {
-            console.log('📤 [Init] Sending initial player state...');
-            sendUpdate(initialPlayer);
-        } else {
-            console.warn('⚠️ [Init] Not connected, player state not sent');
+    // ===================================
+    // ✅ MULTIPLAYER HOOK with proper callbacks
+    // ===================================
+    const { isConnected, otherPlayers, gamePhase, sendUpdate, sendEliminated, sendWinner } = useMultiplayerGame({
+        gameId,
+        enabled: true,
+        onPlayerUpdate: useCallback((playerId: string, state: PlayerState) => {
+            console.log('📥 [WebSocket] Player update received:', playerId.slice(0, 8));
+            interpolatedPlayersRef.current.set(playerId, state);
+        }, []),
+        onPlayerEliminated: useCallback((playerId) => {
+            console.log('💀 [WebSocket] Player eliminated:', playerId.slice(0, 8));
+            setEliminated(prev => prev + 1);
+            toast.error('Player eliminated!');
+        }, []),
+        onWinnerDeclared: useCallback((winnerId) => {
+            console.log('🏆 [WebSocket] Winner declared:', winnerId.slice(0, 8));
+            if (winnerId === wallet.publicKey?.toBase58()) {
+                toast.success('🏆 YOU WON!');
+
+                // ✅ Navigate to Winner page
+                const game = solanaGame.games.find(g => g.gameId === gameId);
+                if (game) {
+                    setTimeout(() => {
+                        navigate(`/phase3-winner?gameId=${gameId}&winner=${winnerId}&prize=${(game.prizePool * 0.99).toFixed(4)}`);
+                    }, 3000);
+                }
+            }
+            setGameEnded(true);
+        }, [wallet.publicKey, solanaGame.games, gameId, navigate]),
+        onGamePhaseChange: useCallback((phase) => {
+            console.log('🎮 [WebSocket] Game phase changed to:', phase);
+            if (phase === 'countdown') {
+                setCountdown({ remaining: 15, isActive: true });
+                toast.info('⚔️ Battle starting in 15 seconds...');
+            } else if (phase === 'active') {
+                setGameStarted(true);
+                initializePlayer();
+                toast.success('🎮 Battle started!');
+            } else if (phase === 'ended') {
+                setGameEnded(true);
+            }
+        }, [initializePlayer]),
+        onCountdownSync: useCallback((startTime: number, duration: number) => {
+            console.log('⏱️ [WebSocket] Countdown synced:', { startTime, duration });
+            const calculateRemaining = () => {
+                const now = Date.now();
+                const endTime = startTime + duration;
+                return Math.max(0, Math.ceil((endTime - now) / 1000));
+            };
+
+            setCountdown({ remaining: calculateRemaining(), isActive: true });
+
+            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+            countdownIntervalRef.current = setInterval(() => {
+                const remaining = calculateRemaining();
+                setCountdown({ remaining, isActive: remaining > 0 });
+                if (remaining <= 0) clearInterval(countdownIntervalRef.current);
+            }, 100);
+        }, [])
+    });
+
+    // ✅ FIX: Send initial player state after connection established
+    useEffect(() => {
+        if (myPlayer && isConnected) {
+            console.log('📤 [Init] Sending initial player state to server...');
+            sendUpdate(myPlayer);
         }
-    }, [wallet.publicKey, readyPlayers, sendUpdate, isConnected]);
+    }, [myPlayer?.id, isConnected]); // Only when player is first created
 
     // ✅ OPTIMIZATION: Throttled to 16ms (60fps)
     const throttledSendUpdate = useCallback((player: PlayerState) => {
@@ -689,12 +697,11 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
             // Glow
             const glowGradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, pulseRadius * 1.8);
-            glowGradient.addColorStop(0, p.color.replace('hsl', 'hsla').replace(')', ', 0.6)'));
-            glowGradient.addColorStop(0.6, p.color.replace('hsl', 'hsla').replace(')', ', 0.2)'));
+            glowGradient.addColorStop(0, p.color.replace('hsl', 'hsla').replace(')', ', 0.2)'));
             glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = glowGradient;
             ctx.beginPath();
             ctx.arc(p.x, p.y, pulseRadius * 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = glowGradient;
             ctx.fill();
 
             // Shield
@@ -888,7 +895,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
     const remainingPlayers = Array.from(otherPlayers.values()).filter(p => p.alive).length + (myPlayer?.alive ? 1 : 0);
 
-    // COUNTDOWN SCREEN - PĂSTRAT IDENTIC
+    // COUNTDOWN SCREEN
     if (countdown.isActive && countdown.remaining > 0) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black flex items-center justify-center">
@@ -937,7 +944,7 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
                     <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg p-4">
                         <p className="text-yellow-300 font-bold">
-                            🔥 {readyPlayers.length} Warriors Ready • Winner Takes All 🔥
+                            {readyPlayers.length} players ready • Battle starts in {countdown.remaining}s
                         </p>
                     </div>
                 </div>
@@ -945,76 +952,72 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         );
     }
 
-    // MAIN GAME SCREEN - PĂSTRAT IDENTIC
     return (
-        <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black relative overflow-hidden">
+        <div className="relative w-full">
             <ParticleBackground />
 
-            <div className="fixed inset-0 bg-gradient-to-b from-transparent via-red-900/10 to-black/30 pointer-events-none"></div>
-            <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.8)_100%)] pointer-events-none"></div>
+            {/* Top Status Bar */}
+            <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/95 via-black/80 to-transparent backdrop-blur-sm border-b border-red-600/30 px-2 sm:px-4 py-2 sm:py-3">
+                <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+                    {/* Connection Status */}
+                    <div className="flex items-center gap-2 bg-black/60 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-red-600/40">
+                        {isConnected ? (
+                            <Wifi className="w-3 h-3 sm:w-4 sm:h-4 text-green-400 animate-pulse" />
+                        ) : (
+                            <WifiOff className="w-3 h-3 sm:w-4 sm:h-4 text-red-400 animate-pulse" />
+                        )}
+                        <span className="text-[10px] sm:text-xs font-bold text-gray-300 hidden sm:inline">
+                            {isConnected ? 'CONNECTED' : 'RECONNECTING...'}
+                        </span>
+                    </div>
 
-            {/* Top Stats Bar */}
-            <div className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b-2 border-red-600/50 p-2 sm:p-4">
-                <div className="flex justify-center gap-2 sm:gap-8 flex-wrap text-xs sm:text-base">
-                    <div className="text-center group">
-                        <div className="text-lg sm:text-3xl font-black text-green-400 font-mono tracking-wider group-hover:text-green-300 transition-colors">
-                            {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
+                    {/* Timer */}
+                    <div className="flex items-center gap-2 bg-black/60 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-red-600/40">
+                        <span className="text-red-400 text-[10px] sm:text-xs font-bold">
+                            ⏱️ {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
+                        </span>
+                    </div>
+
+                    {/* Players Alive */}
+                    <div className="flex items-center gap-2 bg-black/60 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-red-600/40">
+                        <span className="text-red-400 text-[10px] sm:text-xs font-bold">
+                            👥 {remainingPlayers}/{readyPlayers.length}
+                        </span>
+                    </div>
+
+                    {/* HP Bar */}
+                    {myPlayer && (
+                        <div className="flex items-center gap-2 bg-black/60 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-red-600/40 flex-1 min-w-[120px] max-w-[200px]">
+                            <Heart className="w-3 h-3 sm:w-4 sm:h-4 text-red-400 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full transition-all duration-300 ${myPlayer.hp > 600 ? 'bg-green-500' : myPlayer.hp > 300 ? 'bg-yellow-500' : 'bg-red-500'
+                                            }`}
+                                        style={{ width: `${(myPlayer.hp / myPlayer.maxHp) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                            <span className="text-[9px] sm:text-xs font-bold text-gray-300 flex-shrink-0">
+                                {myPlayer.hp}
+                            </span>
                         </div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">TIME</div>
-                    </div>
+                    )}
 
-                    <div className="text-center group">
-                        <div className="text-lg sm:text-3xl font-black text-red-400 group-hover:text-red-300 transition-colors">{remainingPlayers}</div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">ALIVE</div>
-                    </div>
-
-                    <div className="text-center group">
-                        <div className="text-lg sm:text-3xl font-black text-orange-400 group-hover:text-orange-300 transition-colors">{eliminated}</div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">DEAD</div>
-                    </div>
-
-                    <div className="text-center group">
-                        <div className="text-lg sm:text-3xl font-black text-cyan-400 flex items-center gap-1 sm:gap-2 group-hover:text-cyan-300 transition-colors">
-                            <Coins className="w-4 h-4 sm:w-6 sm:h-6" />
-                            {virtualBalance.toFixed(0)}
-                        </div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">vSOL</div>
-                    </div>
-
-                    <div className="text-center group">
-                        <div className="text-lg sm:text-3xl font-black text-pink-400 flex items-center gap-1 sm:gap-2 group-hover:text-pink-300 transition-colors">
-                            <Heart className="w-4 h-4 sm:w-6 sm:h-6" />
-                            {myPlayer?.hp || 0}
-                        </div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide">HP</div>
-                    </div>
-
-                    <div className="text-center group hidden sm:block">
-                        <div className="text-xl sm:text-2xl font-black text-cyan-400 group-hover:text-cyan-300 transition-colors">
-                            {Math.round(safeZone.radius)}m
-                        </div>
-                        <div className="text-xs text-red-300 font-semibold tracking-wide">ZONE</div>
-                    </div>
-
-                    <div className="text-center">
-                        <div className={`text-lg sm:text-2xl font-black flex items-center gap-1 sm:gap-2 ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                            {isConnected ? <Wifi className="w-4 h-4 sm:w-6 sm:h-6" /> : <WifiOff className="w-4 h-4 sm:w-6 sm:h-6" />}
-                        </div>
-                        <div className="text-[10px] sm:text-xs text-red-300 font-semibold tracking-wide hidden sm:block">{isConnected ? 'ON' : 'OFF'}</div>
+                    {/* Balance */}
+                    <div className="flex items-center gap-1 sm:gap-2 bg-gradient-to-r from-yellow-600/20 to-yellow-800/20 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-yellow-600/50">
+                        <Coins className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-400 flex-shrink-0" />
+                        <span className="text-yellow-400 text-[10px] sm:text-xs font-bold">
+                            {virtualBalance.toFixed(2)}
+                        </span>
                     </div>
                 </div>
             </div>
 
             {/* Power-ups Bar */}
-            <div className="fixed bottom-4 left-0 right-0 sm:right-4 sm:left-auto sm:top-1/2 sm:-translate-y-1/2 sm:bottom-auto z-40 px-4 sm:px-0">
-                <div className="bg-black/90 backdrop-blur-xl border-2 border-red-600/50 rounded-xl p-3 sm:p-4 shadow-2xl shadow-red-900/50 max-w-full sm:max-w-[200px] mx-auto">
-                    <div className="text-center mb-2 sm:mb-3">
-                        <h3 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent mb-1">
-                            💀 ARSENAL 💀
-                        </h3>
-                        <p className="text-red-300 text-[10px] sm:text-xs">Press 1, 2, 3</p>
-                    </div>
-                    <div className="flex sm:flex-col gap-2 sm:gap-3 justify-center">
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black/95 via-black/80 to-transparent backdrop-blur-sm border-t border-red-600/30 px-2 sm:px-4 py-2 sm:py-3">
+                <div className="max-w-3xl mx-auto">
+                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
                         <Button
                             onClick={() => buyPowerUp('speed')}
                             disabled={virtualBalance < getSpeedCost || myPlayer?.hasSpeed || !myPlayer?.alive}

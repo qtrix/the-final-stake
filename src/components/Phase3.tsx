@@ -90,6 +90,7 @@ const Phase3 = () => {
     const isFetchingReadyStates = useRef(false);
     const hasTriedAutoAdvance = useRef(false);
     const hasCheckedPhase3Status = useRef(false);
+    const expectedPlayersSentRef = useRef(false);
 
     useEffect(() => {
         console.log('🎯 Phase3 mounted');
@@ -157,6 +158,27 @@ const Phase3 = () => {
             navigate('/lobby');
         }
     }, [gameId, games, navigate]);
+    useEffect(() => {
+        // Wait for all conditions to be met
+        if (!wsConnected || !currentGame || !gameId) return;
+
+        // Only send once per game
+        if (expectedPlayersSentRef.current) return;
+
+        const expectedPlayers = currentGame.players.length;
+
+        console.log(`[Phase3] 📊 Sending expected players count: ${expectedPlayers}`);
+
+        // Send to server
+        wsManager.send({
+            type: 'set_expected_players',
+            count: expectedPlayers
+        });
+
+        expectedPlayersSentRef.current = true;
+
+        toast.success(`Game expects ${expectedPlayers} players`, { duration: 2000 });
+    }, [wsConnected, currentGame, gameId]);
 
     useEffect(() => {
         if (!currentGame) return;

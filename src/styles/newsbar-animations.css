@@ -1,0 +1,55 @@
+/* Add these animations to your tailwind.config.js or global CSS */
+
+/* Scrolling animation - moves content from right to left */
+@keyframes scroll-left {
+    0% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(-33.333%);
+    }
+}
+
+/* Shimmer effect for background */
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-scroll-left {
+    animation: scroll-left 45s linear infinite;
+}
+
+.animate-shimmer {
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Alternative: Add to tailwind.config.js */
+/*
+  module.exports = {
+    theme: {
+      extend: {
+        animation: {
+          'scroll-left': 'scroll-left 45s linear infinite',
+          'shimmer': 'shimmer 3s ease-in-out infinite',
+        },
+        keyframes: {
+          'scroll-left': {
+            '0%': { transform: 'translateX(0)' },
+            '100%': { transform: 'translateX(-33.333%)' },
+          },
+          'shimmer': {
+            '0%': { transform: 'translateX(-100%)' },
+            '100%': { transform: 'translateX(100%)' },
+          },
+        },
+      },
+    },
+  }
+  */

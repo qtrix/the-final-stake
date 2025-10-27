@@ -19,6 +19,7 @@ import MemeBattles from "./pages/games/MemeBattles";
 import HowToPlay from './pages/HowToPlay';
 import Phase3Winner from './pages/Phase3Winner';
 import Team from "./pages/Team";
+import AdminDashboard from "./pages/AdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
           <Route path="/profile" element={<Profile />} />
           <Route path="/how-it-works" element={<HowToPlay />} />
           <Route path="/team" element={<Team />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

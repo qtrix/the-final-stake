@@ -1,4 +1,4 @@
-// src/pages/Phase1.tsx - VERSIUNE FINALĂ COMPLETĂ
+// src/pages/Phase1.tsx - VERSIUNE FINALĂ COMPLETĂ CU FIX
 import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pickaxe, Sprout, TrendingUp, FlaskConical, Users, Loader2, Clock, ArrowRight } from 'lucide-react';
@@ -15,6 +15,8 @@ import RewardsPanel from "@/components/phase1/RewardsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import EventsTicker, { GameEvent as UIGameEvent } from "@/components/phase1/EventsTicker";
+import EventsNewsBar from '@/components/EventsNewsBar';
+import { generateChaosEvents, getUpcomingEvents, ChaosEvent } from '@/utils/mockChaosEvents';
 
 export default function Phase1() {
   const navigate = useNavigate();
@@ -34,6 +36,11 @@ export default function Phase1() {
   const [canAdvancePhase, setCanAdvancePhase] = useState(false);
   const [gameEvents, setGameEvents] = useState<UIGameEvent[]>([]);
 
+  // ✅ Chaos Events State (cu typing corect)
+  const [chaosEvents, setChaosEvents] = useState<ChaosEvent[]>([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [upcomingEvents, setUpcomingEvents] = useState<ChaosEvent[]>([]);
+
   // Resource allocations (percentages, converted to amounts when submitting)
   const [allocations, setAllocations] = useState({
     mining: 20,
@@ -42,6 +49,43 @@ export default function Phase1() {
     research: 20,
     social: 20
   });
+
+  // ✅ Generate chaos events when game is loaded
+  useEffect(() => {
+    if (!currentGame) return;
+
+    console.log('🎮 Generating chaos events for game:', currentGame.gameId);
+    // Use actual game start time from contract
+    const gameStart = currentGame.phaseStartTime || new Date();
+    const events = generateChaosEvents(gameStart, 18); // 18 minute phase
+    setChaosEvents(events);
+
+    console.log('✅ Generated chaos events:', events);
+    events.forEach(e => {
+      console.log(`  ${e.icon} ${e.title} at ${e.timestamp.toLocaleTimeString()}`);
+    });
+  }, [currentGame?.gameId]);
+
+  // ✅ Update timer and filter upcoming events
+  useEffect(() => {
+    if (chaosEvents.length === 0) return;
+
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now);
+
+      // Get events that should be shown (within 2 minutes before event)
+      const upcoming = getUpcomingEvents(chaosEvents, now);
+      setUpcomingEvents(upcoming);
+
+      // Debug log when events are upcoming
+      if (upcoming.length > 0) {
+        console.log('⚠️ Upcoming events to display:', upcoming.map(e => e.title));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [chaosEvents]);
 
   // ✅ Fetch and process game events from contract
   useEffect(() => {
@@ -812,6 +856,12 @@ export default function Phase1() {
       <ParticleBackground />
       <Navbar />
 
+      {/* ✅ Chaos Events News Bar - folosește upcomingEvents (nu upcoming) */}
+      <EventsNewsBar
+        upcomingEvents={upcomingEvents}
+        currentTime={currentTime}
+      />
+
       <main className="relative pb-16 px-4" style={{ zIndex: 10, paddingTop: '6rem' }}>
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -838,7 +888,7 @@ export default function Phase1() {
               <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border">
                 <Clock className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Timp rămas</p>
+                  <p className="text-xs text-muted-foreground">Remaining time</p>
                   <p className="text-lg font-bold">{timeRemaining}</p>
                 </div>
               </div>

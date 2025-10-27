@@ -1,8 +1,10 @@
-// src/lib/battleHandler.ts - Battle Handler with WebSocket
+// src/lib/battleHandler.ts - FIXED Battle Handler using Socket.IO
 
 import { PublicKey } from '@solana/web3.js';
+import { io, Socket } from 'socket.io-client';
 import { rpsEngine, type RPSGameState, type RPSMove } from './gameEngines/rockPaperScissors';
-import { WebSocketManager } from './wsManager';
+
+const PHASE2_WS_URL = import.meta.env.VITE_PHASE2_WS_URL || 'wss://solana-survivor-pvp-server-production.up.railway.app';
 
 export type BattleStatus = 'connecting' | 'waiting_for_opponent' | 'in_progress' | 'timeout' | 'completed' | 'error';
 
@@ -28,7 +30,7 @@ export class BattleHandler {
     private onStateChange?: (state: BattleState) => void;
     private onTimeout?: () => void;
     private onGameEnd?: (winner: PublicKey) => void;
-    private wsManager: WebSocketManager;
+    private socket: Socket | null = null;
 
     constructor(
         challengeId: string,
@@ -52,8 +54,6 @@ export class BattleHandler {
             waitingForOpponent: false,
             opponentConnected: false,
         };
-
-        this.wsManager = new WebSocketManager(challengeId, playerAddress.toBase58());
     }
 
     onUpdate(callback: (state: BattleState) => void) {
@@ -73,60 +73,83 @@ export class BattleHandler {
     }
 
     startBattle() {
-        console.log('🎮 Starting battle with WebSocket...');
+        console.log('🎮 [Battle] Connecting to Phase 2 server:', PHASE2_WS_URL);
 
-        this.wsManager.connect({
-            onPlayerJoined: (data) => {
-                console.log('👤 Player joined:', data);
-                if (data.playersCount === 1) {
-                    this.state.battleStatus = 'waiting_for_opponent';
-                } else if (data.playersCount === 2) {
-                    this.state.opponentConnected = true;
-                }
-                this.notifyStateChange();
-            },
+        this.socket = io(PHASE2_WS_URL, {
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        });
 
-            onGameReady: (data) => {
-                console.log('✅ Both players connected!');
-                this.state.battleStatus = 'in_progress';
-                this.state.gameState.gameStatus = 'playing';
+        this.socket.on('connect', () => {
+            console.log('✅ [Battle] Connected to server');
+            this.state.battleStatus = 'waiting_for_opponent';
+            this.notifyStateChange();
+
+            // Join game room
+            this.socket!.emit('join_game', {
+                challengeId: this.state.challengeId,
+                playerAddress: this.state.playerAddress.toBase58(),
+            });
+        });
+
+        this.socket.on('player_joined', (data) => {
+            console.log('👤 [Battle] Player joined:', data.playersCount, 'players');
+            if (data.playersCount === 1) {
+                this.state.battleStatus = 'waiting_for_opponent';
+            } else if (data.playersCount === 2) {
                 this.state.opponentConnected = true;
-                this.notifyStateChange();
-                this.startRoundTimer();
-            },
+            }
+            this.notifyStateChange();
+        });
 
-            onOpponentMoved: (data) => {
-                console.log('🤖 Opponent moved');
-                this.notifyStateChange();
-            },
+        this.socket.on('game_ready', (data) => {
+            console.log('✅ [Battle] Game ready! Both players connected');
+            this.state.battleStatus = 'in_progress';
+            this.state.gameState.gameStatus = 'playing';
+            this.state.opponentConnected = true;
+            this.notifyStateChange();
+            this.startRoundTimer();
+        });
 
-            onRoundComplete: (data) => {
-                console.log('🎲 Round complete:', data);
+        this.socket.on('opponent_moved', (data) => {
+            console.log('🤖 [Battle] Opponent moved');
+            this.notifyStateChange();
+        });
 
-                const opponentMove = data.moves.find(
-                    m => m.playerAddress !== this.state.playerAddress.toBase58()
-                );
+        this.socket.on('round_complete', (data) => {
+            console.log('🎲 [Battle] Round complete:', data);
 
-                if (opponentMove) {
-                    this.receiveOpponentMove(opponentMove.move as RPSMove);
-                }
-            },
+            const opponentMoveData = data.moves.find(
+                (m: any) => m.playerAddress !== this.state.playerAddress.toBase58()
+            );
 
-            onGameEnded: (data) => {
-                console.log('🏆 Game ended');
-            },
+            if (opponentMoveData) {
+                this.receiveOpponentMove(opponentMoveData.move as RPSMove);
+            }
+        });
 
-            onOpponentLeft: (data) => {
-                console.log('👋 Opponent disconnected');
-                this.forceEnd('player', 'Opponent disconnected');
-            },
+        this.socket.on('game_ended', (data) => {
+            console.log('🏆 [Battle] Game ended');
+        });
 
-            onError: (error) => {
-                console.error('❌ WebSocket error:', error);
-                this.state.battleStatus = 'error';
-                this.state.error = 'Connection error';
-                this.notifyStateChange();
-            },
+        this.socket.on('opponent_left', (data) => {
+            console.log('👋 [Battle] Opponent disconnected');
+            this.forceEnd('player', 'Opponent disconnected');
+        });
+
+        this.socket.on('disconnect', () => {
+            console.log('❌ [Battle] Disconnected from server');
+            this.state.battleStatus = 'error';
+            this.state.error = 'Connection lost';
+            this.notifyStateChange();
+        });
+
+        this.socket.on('connect_error', (error) => {
+            console.error('❌ [Battle] Connection error:', error);
+            this.state.battleStatus = 'error';
+            this.state.error = 'Connection error';
+            this.notifyStateChange();
         });
     }
 
@@ -143,13 +166,23 @@ export class BattleHandler {
             throw new Error('Battle not in progress');
         }
 
+        if (!this.socket?.connected) {
+            throw new Error('Not connected to server');
+        }
+
         this.state.playerMove = move;
         this.state.moveSubmittedAt = Date.now();
         this.state.waitingForOpponent = true;
 
         try {
-            this.wsManager.submitMove(move, this.state.gameState.currentRound);
-            console.log(`✋ Move submitted: ${move}`);
+            this.socket.emit('submit_move', {
+                challengeId: this.state.challengeId,
+                playerAddress: this.state.playerAddress.toBase58(),
+                move,
+                round: this.state.gameState.currentRound,
+            });
+
+            console.log(`✋ [Battle] Move submitted: ${move}`);
             this.notifyStateChange();
         } catch (error) {
             console.error('Failed to submit move:', error);
@@ -167,7 +200,7 @@ export class BattleHandler {
 
         this.state.opponentMove = move;
         this.state.waitingForOpponent = false;
-        console.log(`🤖 Opponent move: ${move}`);
+        console.log(`🤖 [Battle] Opponent move: ${move}`);
 
         this.notifyStateChange();
 
@@ -196,7 +229,7 @@ export class BattleHandler {
         this.state.opponentMove = null;
         this.state.moveSubmittedAt = null;
 
-        console.log(`📊 Round ${newGameState.currentRound - 1} processed`);
+        console.log(`📊 [Battle] Round ${newGameState.currentRound - 1} processed`);
 
         this.notifyStateChange();
 
@@ -211,7 +244,7 @@ export class BattleHandler {
         this.stopRoundTimer();
 
         this.timeoutTimer = setTimeout(() => {
-            console.warn('⏰ Round timeout!');
+            console.warn('⏰ [Battle] Round timeout!');
             this.handleTimeout();
         }, this.state.roundTimeLimit * 1000);
     }
@@ -224,12 +257,20 @@ export class BattleHandler {
     }
 
     private handleTimeout() {
-        console.log('⏰ Timeout triggered');
+        console.log('⏰ [Battle] Timeout triggered');
 
         if (!this.state.playerMove) {
             const randomMove = rpsEngine.generateRandomMove();
             this.state.playerMove = randomMove;
-            this.wsManager.submitMove(randomMove, this.state.gameState.currentRound);
+
+            if (this.socket?.connected) {
+                this.socket.emit('submit_move', {
+                    challengeId: this.state.challengeId,
+                    playerAddress: this.state.playerAddress.toBase58(),
+                    move: randomMove,
+                    round: this.state.gameState.currentRound,
+                });
+            }
         }
 
         this.state.battleStatus = 'timeout';
@@ -248,9 +289,14 @@ export class BattleHandler {
             ? this.state.playerAddress
             : this.state.opponentAddress;
 
-        console.log('🏆 Battle ended! Winner:', winner.toBase58());
+        console.log('🏆 [Battle] Battle ended! Winner:', winner.toBase58());
 
-        this.wsManager.endGame(winner.toBase58());
+        if (this.socket?.connected) {
+            this.socket.emit('game_end', {
+                challengeId: this.state.challengeId,
+                winner: winner.toBase58(),
+            });
+        }
 
         this.notifyStateChange();
 
@@ -270,7 +316,7 @@ export class BattleHandler {
             ? this.state.playerAddress
             : this.state.opponentAddress;
 
-        console.log(`⚠️ Battle force-ended: ${reason}`);
+        console.log(`⚠️ [Battle] Battle force-ended: ${reason}`);
 
         this.notifyStateChange();
 
@@ -287,7 +333,18 @@ export class BattleHandler {
 
     destroy() {
         this.stopRoundTimer();
-        this.wsManager.disconnect();
+
+        if (this.socket) {
+            if (this.socket.connected) {
+                this.socket.emit('leave_game', {
+                    challengeId: this.state.challengeId,
+                    playerAddress: this.state.playerAddress.toBase58(),
+                });
+            }
+            this.socket.disconnect();
+            this.socket = null;
+        }
+
         this.onStateChange = undefined;
         this.onTimeout = undefined;
         this.onGameEnd = undefined;
@@ -303,5 +360,4 @@ export class BattleHandler {
     }
 }
 
-// IMPORTANT: Default export
 export default BattleHandler;

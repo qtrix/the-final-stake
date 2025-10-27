@@ -1,3 +1,4 @@
+// tailwind.config.ts
 import type { Config } from "tailwindcss";
 
 export default {
@@ -83,10 +84,22 @@ export default {
             height: "0",
           },
         },
+        // 👇 ADAUGĂ ACESTEA PENTRU EVENTS NEWS BAR
+        "scroll-left": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-33.333%)" },
+        },
+        "shimmer": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // 👇 ADAUGĂ ACESTEA PENTRU EVENTS NEWS BAR
+        "scroll-left": "scroll-left 45s linear infinite",
+        "shimmer": "shimmer 3s ease-in-out infinite",
       },
     },
   },

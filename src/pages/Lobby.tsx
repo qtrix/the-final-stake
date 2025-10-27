@@ -1143,6 +1143,18 @@ export default function Lobby() {
                       </div>
                     </div>
 
+                    {/* Countdown Timer - for games that haven't started */}
+                    {normalizeStatus(game.status) === 'WaitingForPlayers' && Date.now() < game.startTime.getTime() && (
+                      <div className="mb-4 p-3 rounded-lg" style={{
+                        background: 'linear-gradient(135deg, hsla(50, 100%, 50%, 0.15), hsla(50, 100%, 60%, 0.05))',
+                        border: '1px solid hsla(50, 100%, 50%, 0.3)'
+                      }}>
+                        <div className="flex items-center justify-center">
+                          <CountdownTimer targetTime={game.startTime} />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Winner Display */}
                     {isCompleted && game.phase3Winner && (
                       <div className="mb-4 p-3 rounded-lg" style={{
@@ -1334,12 +1346,13 @@ export default function Lobby() {
                       color: 'white'
                     }}
                   >
-                    <option value={1}>1 oră (12/18/30 min phase)</option>
-                    <option value={2}>2 ore (24/36/60 min phase)</option>
-                    <option value={3}>3 ore (36/54/90 min phase)</option>
-                    <option value={5}>5 ore (60/90/150 min phase)</option>
-                    <option value={8}>8 ore (96/144/240 min phase)</option>
-                    <option value={24}>24 ore (288/432/720 min phase)</option>
+                    <option value={0.5}>30m (12/18/30 min phase)</option>
+                    <option value={1}>1h (12/18/30 min phase)</option>
+                    <option value={2}>2h (24/36/60 min phase)</option>
+                    <option value={3}>3h (36/54/90 min phase)</option>
+                    <option value={5}>5h (60/90/150 min phase)</option>
+                    <option value={8}>8h (96/144/240 min phase)</option>
+                    <option value={24}>24h (288/432/720 min phase)</option>
                   </select>
                 </div>
                 <div>
