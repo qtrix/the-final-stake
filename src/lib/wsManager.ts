@@ -35,7 +35,7 @@ export class WebSocketManager {
     constructor(challengeId: string, playerId: string) {
         this.challengeId = challengeId;
         this.playerId = playerId;
-        this.wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+        this.wsUrl = import.meta.env.VITE_WS_URL || 'wss://purge-server-production.up.railway.app';
     }
 
     connect(callbacks: WebSocketCallbacks) {

@@ -70,7 +70,7 @@ class PurgeWSManager {
     constructor(gameId: string, playerId: string) {
         this.gameId = gameId;
         this.playerId = playerId;
-        this.wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+        this.wsUrl = import.meta.env.VITE_WS_URL || 'wss://purge-server-production.up.railway.app';
 
         console.log('[Purge-WS] 🎮 Initializing for game:', gameId.slice(0, 8));
     }

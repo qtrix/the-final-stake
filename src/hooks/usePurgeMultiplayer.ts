@@ -1,511 +1,352 @@
-// src/hooks/usePurgeMultiplayer.ts - Optimized Multiplayer Hook
+// src/hooks/usePurgeMultiplayer.ts - WORKING VERSION (accepts balance from props)
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = import.meta.env.VITE_PURGE_WS_URL || 'ws://localhost:3001';
+const WS_URL = import.meta.env.VITE_PURGE_WS_URL || 'wss://purge-server-production.up.railway.app';
 
-export type GamePhase = 'waiting' | 'countdown' | 'active' | 'ended';
-
-interface Vector2D {
-    x: number;
-    y: number;
-}
-
-export interface PlayerState {
+export interface Player {
     id: string;
     walletAddress: string;
-    username?: string;
-    x: number;
-    y: number;
-    velocityX: number;
-    velocityY: number;
-    rotation: number;
+    position: { x: number; y: number };
+    velocity: { x: number; y: number };
     hp: number;
     maxHp: number;
-    vsolBalance: number;
-    score: number;
-    kills: number;
-    ready: boolean;
-    eliminated: boolean;
-    isAlive: boolean;
-    isInSafeZone: boolean;
-    joinedAt: number;
-    lastUpdate: number;
-}
-
-interface SafeZone {
-    centerX: number;
-    centerY: number;
     radius: number;
-    targetRadius: number;
-    shrinking: boolean;
-    nextShrinkAt: number;
+    speed: number;
+    eliminated: boolean;
+    vsolBalance: number;
+    ready: boolean;
+    lastUpdate: number;
 }
 
 interface UsePurgeMultiplayerProps {
     gameId: string;
     playerId: string;
     enabled?: boolean;
+    vsolBalance?: number; // ✅ Balance venit din exterior
 }
 
-interface PlayerMap {
-    [playerId: string]: PlayerState;
-}
-
-export function usePurgeMultiplayer({
+export const usePurgeMultiplayer = ({
     gameId,
     playerId,
-    enabled = true
-}: UsePurgeMultiplayerProps) {
-    const navigate = useNavigate();
+    enabled = true,
+    vsolBalance: externalBalance // ✅ Primim balance din props
+}: UsePurgeMultiplayerProps) => {
 
     // Connection state
     const [connected, setConnected] = useState(false);
     const [reconnecting, setReconnecting] = useState(false);
-    const [connectionQuality, setConnectionQuality] = useState<'good' | 'fair' | 'poor'>('good');
 
     // Game state
-    const [gamePhase, setGamePhase] = useState<GamePhase>('waiting');
+    const [gamePhase, setGamePhase] = useState<'waiting' | 'countdown' | 'active' | 'ended'>('waiting');
     const [countdown, setCountdown] = useState<number | null>(null);
-    const [safeZone, setSafeZone] = useState<SafeZone | null>(null);
+    const [players, setPlayers] = useState<Record<string, Player>>({});
+    const [safeZone, setSafeZone] = useState({ x: 400, y: 300, radius: 350 });
+    const [winner, setWinner] = useState<string | null>(null);
 
-    // Players
-    const [players, setPlayers] = useState<PlayerMap>({});
+    // WebSocket refs
+    const wsRef = useRef<WebSocket | null>(null);
+    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const reconnectAttemptsRef = useRef(0);
+    const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // WebSocket
-    const ws = useRef<WebSocket | null>(null);
-    const reconnectAttempts = useRef(0);
-    const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
-    const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
-    const countdownInterval = useRef<NodeJS.Timeout | null>(null);
-    const handlerId = useRef(`hook-${Date.now()}`);
+    const vsolBalanceRef = useRef<number>(0);
+    const isConnectingRef = useRef(false);
+    const hasInitializedRef = useRef(false);
 
-    // Update batching
-    const updateQueue = useRef<Partial<PlayerState>[]>([]);
-    const batchInterval = useRef<NodeJS.Timeout | null>(null);
-    const lastUpdateTime = useRef(0);
+    // Derived state
+    const playersArray = Object.values(players);
+    const readyPlayers = playersArray.filter(p => p.ready);
 
-    // Interpolation
-    const interpolationTargets = useRef<Map<string, PlayerState>>(new Map());
-    const lastInterpolationTime = useRef(Date.now());
-
-    // Ping monitoring
-    const pingTime = useRef(0);
-    const latency = useRef(0);
-
-    // Connect to WebSocket
-    const connect = useCallback(() => {
-        if (!enabled || !gameId || !playerId) {
-            console.log('[usePurgeMP] Not enabled or missing params');
-            return;
+    // ✅ Update balance când vine din props
+    useEffect(() => {
+        if (externalBalance && externalBalance > 0) {
+            vsolBalanceRef.current = externalBalance;
+            console.log('[usePurgeMP] ✅ Balance set:', (externalBalance / 1e9).toFixed(4), 'SOL');
         }
+    }, [externalBalance]);
 
-        const url = `${WS_URL}/game?gameId=${gameId}&playerId=${playerId}`;
-        console.log('[usePurgeMP] Connecting:', url);
 
-        try {
-            ws.current = new WebSocket(url);
 
-            ws.current.onopen = () => {
-                console.log('[usePurgeMP] ✅ Connected');
-                setConnected(true);
-                setReconnecting(false);
-                reconnectAttempts.current = 0;
+    // Message handler
+    const handleMessage = useCallback((data: any) => {
+        switch (data.type) {
+            case 'connected':
+            case 'joined':
+                console.log('[usePurgeMP] ✅', data.type);
+                break;
 
-                startHeartbeat();
-                startBatching();
-
-                // Request initial sync
-                send({ type: 'request_sync' });
-            };
-
-            ws.current.onmessage = (event) => {
-                handleMessage(JSON.parse(event.data));
-            };
-
-            ws.current.onclose = () => {
-                console.log('[usePurgeMP] ❌ Disconnected');
-                setConnected(false);
-                stopHeartbeat();
-                stopBatching();
-
-                if (enabled && reconnectAttempts.current < 5) {
-                    attemptReconnect();
-                }
-            };
-
-            ws.current.onerror = (error) => {
-                console.error('[usePurgeMP] Error:', error);
-            };
-
-        } catch (error) {
-            console.error('[usePurgeMP] Connection failed:', error);
-        }
-    }, [enabled, gameId, playerId]);
-
-    // Handle incoming messages
-    const handleMessage = useCallback((message: any) => {
-        switch (message.type) {
-            case 'sync':
-                console.log('[usePurgeMP] 📦 Sync:', message.players?.length || 0, 'players');
-                const newPlayers: PlayerMap = {};
-                message.players?.forEach((p: PlayerState) => {
-                    newPlayers[p.id] = p;
-                    interpolationTargets.current.set(p.id, p);
-                });
-                setPlayers(newPlayers);
-
-                if (message.safeZone) {
-                    setSafeZone(message.safeZone);
-                }
-                if (message.phase) {
-                    setGamePhase(message.phase);
+            case 'game_state':
+                if (data.state) {
+                    console.log('[usePurgeMP] 📦 State:', data.state.phase);
+                    setGamePhase(data.state.phase);
+                    setPlayers(data.state.players || {});
+                    setSafeZone(data.state.safeZone);
+                    setCountdown(data.state.countdown);
+                    setWinner(data.state.winner);
                 }
                 break;
 
-            case 'player:update':
-                if (message.id === playerId) return; // Skip own updates
+            case 'phase_change':
+                setGamePhase(data.phase);
+                break;
 
-                interpolationTargets.current.set(message.id, message.state as PlayerState);
+            case 'countdown':
+                setCountdown(data.seconds);
+                break;
 
-                // Immediate update for critical changes
-                if (message.state.eliminated || message.state.hp !== undefined) {
+            case 'player_joined':
+                if (data.player) {
                     setPlayers(prev => ({
                         ...prev,
-                        [message.id]: { ...prev[message.id], ...message.state }
+                        [data.player.id]: data.player
                     }));
                 }
                 break;
 
-            case 'player:connected':
-                console.log('[usePurgeMP] 👋 Player joined:', message.playerId?.slice(0, 8));
-                setPlayers(prev => ({
-                    ...prev,
-                    [message.playerId]: message.state
-                }));
-                interpolationTargets.current.set(message.playerId, message.state);
-                break;
-
-            case 'player:disconnected':
-                console.log('[usePurgeMP] 👋 Player left:', message.playerId?.slice(0, 8));
+            case 'player_left':
                 setPlayers(prev => {
                     const newPlayers = { ...prev };
-                    delete newPlayers[message.playerId];
+                    delete newPlayers[data.playerId];
                     return newPlayers;
                 });
-                interpolationTargets.current.delete(message.playerId);
                 break;
 
-            case 'player:eliminated':
-                console.log('[usePurgeMP] 💀 Player eliminated:', message.playerId?.slice(0, 8));
+            case 'player_ready':
                 setPlayers(prev => ({
                     ...prev,
-                    [message.playerId]: { ...prev[message.playerId], eliminated: true, isAlive: false }
+                    [data.playerId]: {
+                        ...prev[data.playerId],
+                        ready: true
+                    }
                 }));
                 break;
 
-            case 'player:ready':
-                console.log('[usePurgeMP] ✅ Player ready:', message.playerId?.slice(0, 8));
-                setPlayers(prev => ({
-                    ...prev,
-                    [message.playerId]: { ...prev[message.playerId], ready: true }
-                }));
-                break;
-
-            case 'game:phase':
-                console.log('[usePurgeMP] 🎮 Phase:', message.phase);
-                setGamePhase(message.phase);
-                break;
-
-            case 'game:countdown':
-                console.log('[usePurgeMP] ⏱️ Countdown started');
-                startCountdownTimer(message.startTime, message.duration);
-                break;
-
-            case 'game:start':
-                console.log('[usePurgeMP] 🚀 Game started!');
-                setCountdown(null);
-                setGamePhase('active');
-                // Auto-navigate to game
-                navigate(`/phase3/game/${gameId}`);
-                break;
-
-            case 'game:winner':
-                console.log('[usePurgeMP] 🏆 Winner:', message.winnerId?.slice(0, 8));
-                setGamePhase('ended');
-                // Navigate to results
-                setTimeout(() => {
-                    navigate(`/phase3/winner?gameId=${gameId}&winner=${message.winnerId}&prize=${message.finalStats?.prize || 0}`);
-                }, 2000);
-                break;
-
-            case 'safezone:update':
-                setSafeZone(message.safeZone);
-                break;
-
-            case 'pong':
-                if (pingTime.current > 0) {
-                    latency.current = Date.now() - pingTime.current;
-                    pingTime.current = 0;
-
-                    // Update connection quality
-                    const newQuality = latency.current < 50 ? 'good' :
-                        latency.current < 150 ? 'fair' : 'poor';
-                    setConnectionQuality(newQuality);
+            case 'player_update':
+                if (data.player) {
+                    setPlayers(prev => ({
+                        ...prev,
+                        [data.player.id]: data.player
+                    }));
                 }
+                break;
+
+            case 'player_eliminated':
+                setPlayers(prev => ({
+                    ...prev,
+                    [data.playerId]: {
+                        ...prev[data.playerId],
+                        eliminated: true,
+                        hp: 0
+                    }
+                }));
+                break;
+
+            case 'safe_zone_update':
+                if (data.safeZone) {
+                    setSafeZone(data.safeZone);
+                }
+                break;
+
+            case 'winner':
+                setWinner(data.winnerId);
+                setGamePhase('ended');
                 break;
 
             case 'error':
-                console.error('[usePurgeMP] Server error:', message.message);
+                console.error('[usePurgeMP] ❌ Error:', data.message);
                 break;
+
+            case 'pong':
+                break;
+
+            default:
+                console.log('[usePurgeMP] ❓ Unknown:', data.type);
         }
-    }, [playerId, gameId, navigate]);
+    }, []);
 
-    // Countdown timer
-    const startCountdownTimer = useCallback((startTime: number, duration: number) => {
-        if (countdownInterval.current) {
-            clearInterval(countdownInterval.current);
+    // WebSocket connection
+    const connect = useCallback(() => {
+        if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
+            return;
         }
 
-        const updateCountdown = () => {
-            const now = Date.now();
-            const elapsed = now - startTime;
-            const remaining = Math.max(0, duration - elapsed);
+        if (!enabled || !gameId || !playerId) {
+            console.log('[usePurgeMP] ❌ Missing params');
+            return;
+        }
 
-            setCountdown(Math.ceil(remaining / 1000));
+        // ✅ Așteaptă balance
+        if (!vsolBalanceRef.current || vsolBalanceRef.current <= 0) {
+            console.log('[usePurgeMP] ⏳ Waiting for balance...');
+            setTimeout(() => connect(), 500);
+            return;
+        }
 
-            if (remaining <= 0) {
-                if (countdownInterval.current) {
-                    clearInterval(countdownInterval.current);
-                    countdownInterval.current = null;
+        isConnectingRef.current = true;
+
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+
+        try {
+            const url = `${WS_URL}/game?gameId=${gameId}&playerId=${playerId}`;
+            console.log('[usePurgeMP] 🔗 Connecting...');
+
+            const ws = new WebSocket(url);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+                console.log('[usePurgeMP] ✅ OPEN');
+                isConnectingRef.current = false;
+                setConnected(true);
+                setReconnecting(false);
+                reconnectAttemptsRef.current = 0;
+
+                // Send join
+                const joinMsg = {
+                    type: 'join',
+                    gameId,
+                    playerId,
+                    vsolBalance: vsolBalanceRef.current
+                };
+                console.log('[usePurgeMP] 📤 Join:', (vsolBalanceRef.current / 1e9).toFixed(4), 'SOL');
+                ws.send(JSON.stringify(joinMsg));
+
+                // Start ping
+                if (pingIntervalRef.current) {
+                    clearInterval(pingIntervalRef.current);
                 }
-                setCountdown(null);
-            }
-        };
-
-        updateCountdown();
-        countdownInterval.current = setInterval(updateCountdown, 100);
-    }, []);
-
-    // Send message
-    const send = useCallback((message: any) => {
-        if (ws.current?.readyState === WebSocket.OPEN) {
-            try {
-                ws.current.send(JSON.stringify(message));
-            } catch (error) {
-                console.error('[usePurgeMP] Send error:', error);
-            }
-        }
-    }, []);
-
-    // Batch updates
-    const startBatching = useCallback(() => {
-        stopBatching();
-        batchInterval.current = setInterval(() => {
-            if (updateQueue.current.length > 0 && ws.current?.readyState === WebSocket.OPEN) {
-                const latestState = updateQueue.current[updateQueue.current.length - 1];
-                send({
-                    type: 'player:update',
-                    state: latestState
-                });
-                updateQueue.current = [];
-            }
-        }, 50); // 20 updates/sec
-    }, [send]);
-
-    const stopBatching = useCallback(() => {
-        if (batchInterval.current) {
-            clearInterval(batchInterval.current);
-            batchInterval.current = null;
-        }
-        updateQueue.current = [];
-    }, []);
-
-    // Heartbeat
-    const startHeartbeat = useCallback(() => {
-        stopHeartbeat();
-        heartbeatInterval.current = setInterval(() => {
-            if (ws.current?.readyState === WebSocket.OPEN) {
-                pingTime.current = Date.now();
-                send({ type: 'ping' });
-            }
-        }, 20000);
-    }, [send]);
-
-    const stopHeartbeat = useCallback(() => {
-        if (heartbeatInterval.current) {
-            clearInterval(heartbeatInterval.current);
-            heartbeatInterval.current = null;
-        }
-    }, []);
-
-    // Reconnect
-    const attemptReconnect = useCallback(() => {
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-        console.log(`[usePurgeMP] Reconnecting in ${delay}ms...`);
-
-        setReconnecting(true);
-        reconnectAttempts.current++;
-
-        reconnectTimeout.current = setTimeout(() => {
-            connect();
-        }, delay);
-    }, [connect]);
-
-    // Interpolation
-    const interpolatePlayerPositions = useCallback(() => {
-        const now = Date.now();
-        const delta = now - lastInterpolationTime.current;
-        lastInterpolationTime.current = now;
-
-        if (delta > 100) return;
-
-        setPlayers(prev => {
-            const updated: PlayerMap = { ...prev };
-            let hasChanges = false;
-
-            interpolationTargets.current.forEach((target, id) => {
-                if (id === playerId) return;
-
-                const current = updated[id];
-                if (!current || current.eliminated) return;
-
-                const lerpFactor = Math.min(delta / 100, 1);
-
-                if (target.x !== undefined && target.y !== undefined) {
-                    const newX = current.x + (target.x - current.x) * lerpFactor;
-                    const newY = current.y + (target.y - current.y) * lerpFactor;
-
-                    if (Math.abs(newX - current.x) > 0.1 || Math.abs(newY - current.y) > 0.1) {
-                        updated[id] = {
-                            ...current,
-                            x: newX,
-                            y: newY
-                        };
-                        hasChanges = true;
+                pingIntervalRef.current = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'ping' }));
                     }
+                }, 30000);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (error) {
+                    console.error('[usePurgeMP] ❌ Parse error:', error);
                 }
-            });
+            };
 
-            return hasChanges ? updated : prev;
-        });
-    }, [playerId]);
+            ws.onerror = (error) => {
+                console.error('[usePurgeMP] ❌ Error:', error);
+                isConnectingRef.current = false;
+            };
 
-    // Initialize connection
+            ws.onclose = (event) => {
+                console.log('[usePurgeMP] 🔌 Closed:', event.code);
+                isConnectingRef.current = false;
+                setConnected(false);
+
+                if (pingIntervalRef.current) {
+                    clearInterval(pingIntervalRef.current);
+                    pingIntervalRef.current = null;
+                }
+
+                if (enabled && event.code !== 1000 && reconnectAttemptsRef.current < 5) {
+                    const delay = Math.min(1000 * Math.pow(1.5, reconnectAttemptsRef.current), 10000);
+                    console.log('[usePurgeMP] 🔄 Reconnect in', delay + 'ms');
+                    setReconnecting(true);
+                    reconnectAttemptsRef.current++;
+
+                    if (reconnectTimeoutRef.current) {
+                        clearTimeout(reconnectTimeoutRef.current);
+                    }
+                    reconnectTimeoutRef.current = setTimeout(() => {
+                        connect();
+                    }, delay);
+                }
+            };
+        } catch (error) {
+            console.error('[usePurgeMP] ❌ Connect error:', error);
+            isConnectingRef.current = false;
+        }
+    }, [enabled, gameId, playerId, handleMessage]);
+
+    // Initialize
     useEffect(() => {
-        if (!enabled || !gameId || !playerId) return;
+        if (!enabled || hasInitializedRef.current) return;
+
+        hasInitializedRef.current = true;
+        console.log('[usePurgeMP] 🚀 Init');
 
         connect();
 
-        // Interpolation loop
-        const interpolationLoop = setInterval(() => {
-            interpolatePlayerPositions();
-        }, 16);
-
         return () => {
-            clearInterval(interpolationLoop);
-            if (countdownInterval.current) clearInterval(countdownInterval.current);
-            if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
-            if (batchInterval.current) clearInterval(batchInterval.current);
-            if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
-            if (ws.current) {
-                ws.current.close();
-                ws.current = null;
+            console.log('[usePurgeMP] 🧹 Cleanup');
+            hasInitializedRef.current = false;
+            isConnectingRef.current = false;
+
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
+            }
+            if (pingIntervalRef.current) {
+                clearInterval(pingIntervalRef.current);
+                pingIntervalRef.current = null;
+            }
+            if (wsRef.current) {
+                wsRef.current.close(1000);
+                wsRef.current = null;
             }
         };
-    }, [enabled, gameId, playerId, connect, interpolatePlayerPositions]);
+    }, [enabled, connect]);
 
-    // Public API
-    const sendUpdate = useCallback((state: Partial<PlayerState>) => {
-        if (!connected) return;
-
-        const now = Date.now();
-        const timeSinceLastUpdate = now - lastUpdateTime.current;
-        const minInterval = connectionQuality === 'good' ? 16 :
-            connectionQuality === 'fair' ? 33 : 50;
-
-        if (timeSinceLastUpdate < minInterval) return;
-
-        lastUpdateTime.current = now;
-
-        // Update local state immediately (client-side prediction)
-        setPlayers(prev => ({
-            ...prev,
-            [playerId]: { ...prev[playerId], ...state }
-        }));
-
-        // Queue for sending
-        updateQueue.current.push({
-            ...state,
-            lastUpdate: now
-        });
-    }, [connected, playerId, connectionQuality]);
-
+    // Send methods
     const sendReady = useCallback(() => {
-        console.log('[usePurgeMP] 🎯 Sending ready');
-        send({ type: 'player:ready' });
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            console.log('[usePurgeMP] 📤 Ready');
+            wsRef.current.send(JSON.stringify({
+                type: 'player:ready',
+                playerId
+            }));
+        } else {
+            console.warn('[usePurgeMP] ⚠️ Not connected');
+        }
+    }, [playerId]);
 
-        // Update local state
-        setPlayers(prev => ({
-            ...prev,
-            [playerId]: { ...prev[playerId], ready: true }
-        }));
-    }, [send, playerId]);
+    const sendMove = useCallback((direction: { x: number; y: number }) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'move',
+                playerId,
+                direction
+            }));
+        }
+    }, [playerId]);
 
-    const sendEliminated = useCallback(() => {
-        console.log('[usePurgeMP] 💀 Sending eliminated');
-        send({ type: 'player:eliminated' });
-    }, [send]);
-
-    const requestSync = useCallback(() => {
-        console.log('[usePurgeMP] 🔄 Requesting sync');
-        send({ type: 'request_sync' });
-    }, [send]);
-
-    const getStats = useCallback(() => {
-        return {
-            connected,
-            gameId,
-            playerId: playerId.slice(0, 8),
-            latency: latency.current,
-            connectionQuality,
-            gamePhase,
-            playerCount: Object.keys(players).length
-        };
-    }, [connected, gameId, playerId, connectionQuality, gamePhase, players]);
-
-    // Computed values
-    const playersArray = Object.values(players);
-    const activePlayers = playersArray.filter(p => !p.eliminated);
-    const readyPlayers = playersArray.filter(p => p.ready);
-    const totalPlayers = playersArray.length;
-    const readyCount = readyPlayers.length;
+    const sendPosition = useCallback((position: { x: number; y: number }) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'position',
+                playerId,
+                position
+            }));
+        }
+    }, [playerId]);
 
     return {
-        // Connection
         connected,
         reconnecting,
-        connectionQuality,
-
-        // Game state
         gamePhase,
         countdown,
-        safeZone,
-
-        // Players
         players,
         playersArray,
-        activePlayers,
+        safeZone,
+        winner,
         readyPlayers,
-        totalPlayers,
-        readyCount,
-
-        // Actions
-        sendUpdate,
+        totalPlayers: playersArray.length,
+        readyCount: readyPlayers.length,
         sendReady,
-        sendEliminated,
-        requestSync,
-        getStats,
+        sendMove,
+        sendPosition,
+        reconnect: connect,
+        vsolBalance: vsolBalanceRef.current,
     };
-}
+};

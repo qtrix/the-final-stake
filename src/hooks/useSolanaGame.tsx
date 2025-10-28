@@ -1,5 +1,5 @@
 // src/hooks/useSolanaGame.tsx - VERSIUNE CU CONFIRMĂRI EXPLICITE
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, web3, BN } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -144,6 +144,7 @@ export interface Phase3ReadyState {
   gameId: number;
   player: string;
   ready: boolean;
+  virtualBalance: number;
   markedReadyAt: Date;
 }
 
@@ -1462,7 +1463,7 @@ export function useSolanaGame() {
     }
   };
 
-  const getPhase3ReadyStates = async (gameId: number): Promise<Phase3ReadyState[]> => {
+  const getPhase3ReadyStates = useCallback(async (gameId: number): Promise<Phase3ReadyState[]> => {
     if (!program) return [];
 
     try {
@@ -1479,12 +1480,15 @@ export function useSolanaGame() {
         gameId: state.account.gameId.toNumber(),
         player: state.account.player.toBase58(),
         ready: state.account.ready,
+        virtualBalance: state.account.virtualBalance
+          ? state.account.virtualBalance.toNumber()
+          : 0, // ✅ ADD THIS LINE!
         markedReadyAt: new Date(state.account.markedReadyAt.toNumber() * 1000),
       }));
     } catch (error) {
       return [];
     }
-  };
+  }, [program]);
 
   const getPhase3ReadyStatePDA = (
     programId: PublicKey,

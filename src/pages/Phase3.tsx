@@ -1,409 +1,494 @@
-// src/pages/Phase3.tsx - Phase 3 Lobby (UPDATED)
-
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+// src/pages/Phase3Lobby.tsx
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useSolanaGame } from '../hooks/useSolanaGame';
-import { usePurgeMultiplayer } from '../hooks/usePurgeMultiplayer';
-import { Game } from '../types';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-    Clock, Users, Trophy, AlertCircle, CheckCircle, Loader2,
-    Target, Zap, Coins, Wifi, WifiOff, UserCheck
-} from 'lucide-react';
-import { toast } from 'sonner';
+import { useSolanaGame } from '@/hooks/useSolanaGame';
+import { io, Socket } from 'socket.io-client';
+import { PublicKey } from '@solana/web3.js';
 import ParticleBackground from '@/components/ParticleBackground';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
+import { Clock, Users, Skull, Trophy, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
-const Phase3 = () => {
+interface ReadyPlayer {
+    walletAddress: string;
+    name: string;
+    ready: boolean;
+    vsolBalance: number;
+    markedReadyAt: Date;
+}
+
+interface ButtonProps {
+    variant?: 'default' | 'hero' | 'secondary' | 'sol-outline';
+    size?: 'default' | 'lg';
+    children: React.ReactNode;
+    className?: string;
+    disabled?: boolean;
+    onClick?: () => void;
+}
+
+const Button: React.FC<ButtonProps> = ({
+    variant = 'default',
+    size = 'default',
+    children,
+    className = '',
+    disabled = false,
+    onClick,
+}) => {
+    const baseClasses = 'inline-flex items-center justify-center font-bold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none transform hover:scale-105';
+
+    const variants = {
+        default: 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-500 shadow-lg hover:shadow-xl',
+        hero: 'bg-gradient-to-r from-red-600 via-red-700 to-red-800 text-white hover:from-red-700 hover:via-red-800 hover:to-red-900 focus:ring-red-500 shadow-2xl hover:shadow-red-500/25',
+        secondary: 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700 focus:ring-gray-500 shadow-lg',
+        'sol-outline': 'border-2 border-orange-400 bg-orange-400/10 text-orange-300 hover:bg-orange-400 hover:text-black focus:ring-orange-500 shadow-lg hover:shadow-orange-500/25 backdrop-blur-sm'
+    };
+
+    const sizes = {
+        default: 'px-6 py-3 text-sm rounded-lg',
+        lg: 'px-8 py-4 text-lg rounded-xl'
+    };
+
+    return (
+        <button
+            className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
+            disabled={disabled}
+            onClick={onClick}
+        >
+            {children}
+        </button>
+    );
+};
+
+const Phase3Lobby: React.FC = () => {
+    const { gameId } = useParams<{ gameId: string }>();
     const navigate = useNavigate();
     const wallet = useWallet();
-    const solanaGame = useSolanaGame();
-
     const {
         games,
         markReadyPhase3,
-        loading,
-    } = solanaGame || {};
+        getPhase3ReadyStates,
+        loading
+    } = useSolanaGame();
 
-    // State
-    const [currentGame, setCurrentGame] = useState<Game | null>(null);
-    const [gameId, setGameId] = useState<number | null>(null);
-    const [isMarkingReady, setIsMarkingReady] = useState(false);
+    const [socket, setSocket] = useState<Socket | null>(null);
+    const [game, setGame] = useState<any>(null);
+    const [readyPlayers, setReadyPlayers] = useState<ReadyPlayer[]>([]);
+    const [myReadyState, setMyReadyState] = useState<ReadyPlayer | null>(null);
+    const [timeLeft, setTimeLeft] = useState<number>(0);
+    const [countdownExpired, setCountdownExpired] = useState<boolean>(false);
+    const [gameStarting, setGameStarting] = useState<boolean>(false);
+    const [checkingGameStart, setCheckingGameStart] = useState<boolean>(false);
 
-    // Multiplayer hook
-    const {
-        connected,
-        reconnecting,
-        connectionQuality,
-        gamePhase,
-        countdown,
-        players,
-        playersArray,
-        readyPlayers,
-        totalPlayers,
-        readyCount,
-        sendReady,
-    } = usePurgeMultiplayer({
-        gameId: gameId?.toString() || '0',
-        playerId: wallet.publicKey?.toString() || '',
-        enabled: !!wallet.publicKey && !!gameId
-    });
+    const GAME_SERVER_URL = 'wss://purge-server-production.up.railway.app'; // Change pentru production
 
-    // Find current Phase 3 game
+    // Load game data
     useEffect(() => {
-        if (!games || games.length === 0) return;
+        if (!gameId) return;
 
-        const phase3Game = games.find(g =>
-            g.currentPhase === 3 &&
-            !g.isFinished
-        );
-
-        if (phase3Game) {
-            setCurrentGame(phase3Game);
-            setGameId(phase3Game.gameId);
-            console.log('[Phase3] Found game:', phase3Game.gameId);
+        const currentGame = games.find(g => g.gameId === parseInt(gameId));
+        if (currentGame) {
+            setGame(currentGame);
         }
-    }, [games]);
+    }, [gameId, games]);
 
-    // Check if current player is ready
-    const myPlayer = players[wallet.publicKey?.toString() || ''];
-    const isReady = myPlayer?.ready || false;
-
-    // Handle mark ready
-    const handleMarkReady = async () => {
-        if (!gameId || !wallet.publicKey || !markReadyPhase3) {
-            toast.error('Not ready to mark ready');
-            return;
-        }
-
-        setIsMarkingReady(true);
+    // Load ready players
+    const loadReadyPlayers = useCallback(async () => {
+        if (!gameId) return;
 
         try {
-            // 1. Execute Solana transaction
-            console.log('[Phase3] Marking ready on chain...');
-            await markReadyPhase3(gameId);
+            const states = await getPhase3ReadyStates(parseInt(gameId));
+            const readyStates: ReadyPlayer[] = states.map(s => ({
+                walletAddress: s.player,
+                name: s.player.substring(0, 8) + '...',
+                ready: s.ready,
+                vsolBalance: s.virtualBalance,
+                markedReadyAt: s.markedReadyAt,
+            }));
 
-            // 2. Notify WebSocket server
-            console.log('[Phase3] Notifying WebSocket server...');
-            sendReady();
+            setReadyPlayers(readyStates);
 
-            toast.success('✅ Marked as ready!');
+            // Find my ready state
+            if (wallet.publicKey) {
+                const myState = readyStates.find(s => s.walletAddress === wallet.publicKey!.toBase58());
+                setMyReadyState(myState || null);
+            }
+        } catch (error) {
+            console.error('Error loading ready players:', error);
+        }
+    }, [gameId, getPhase3ReadyStates, wallet.publicKey]);
+
+    useEffect(() => {
+        loadReadyPlayers();
+        const interval = setInterval(loadReadyPlayers, 5000); // Refresh every 5s
+        return () => clearInterval(interval);
+    }, [loadReadyPlayers]);
+
+    // Countdown timer
+    useEffect(() => {
+        if (!game?.phase3ReadyDeadline) return;
+
+        const updateCountdown = () => {
+            const now = new Date().getTime();
+            const deadline = new Date(game.phase3ReadyDeadline).getTime();
+            const diff = deadline - now;
+
+            if (diff <= 0) {
+                setTimeLeft(0);
+                setCountdownExpired(true);
+            } else {
+                setTimeLeft(Math.floor(diff / 1000));
+            }
+        };
+
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000);
+
+        return () => clearInterval(interval);
+    }, [game?.phase3ReadyDeadline]);
+
+    // Connect to WebSocket lobby
+    useEffect(() => {
+        if (!gameId || !wallet.publicKey) return;
+
+        const newSocket = io(GAME_SERVER_URL);
+
+        newSocket.on('connect', () => {
+            console.log('🔗 Connected to game server');
+            newSocket.emit('join-lobby', {
+                gameId: parseInt(gameId),
+                walletAddress: wallet.publicKey!.toBase58(),
+                name: wallet.publicKey!.toBase58().substring(0, 8),
+            });
+        });
+
+        newSocket.on('lobby-joined', (data) => {
+            console.log('👋 Joined lobby:', data);
+        });
+
+        newSocket.on('game-started', (data) => {
+            console.log('🎮 Game started!', data);
+            navigate(`/game/${gameId}/play`);
+        });
+
+        newSocket.on('error', (error) => {
+            console.error('❌ Socket error:', error);
+        });
+
+        setSocket(newSocket);
+
+        return () => {
+            newSocket.disconnect();
+        };
+    }, [gameId, wallet.publicKey, navigate]);
+
+    // Poll to check if game started by someone else
+    useEffect(() => {
+        if (!countdownExpired || !gameId) return;
+
+        const checkGameStarted = async () => {
+            try {
+                setCheckingGameStart(true);
+                const response = await fetch(`${GAME_SERVER_URL}/game/${gameId}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.gameActive) {
+                        // Game was started by someone else
+                        navigate(`/game/${gameId}/play`);
+                    }
+                }
+            } catch (error) {
+                console.log('Game not started yet');
+            } finally {
+                setCheckingGameStart(false);
+            }
+        };
+
+        checkGameStarted();
+        const interval = setInterval(checkGameStarted, 3000); // Check every 3s
+
+        return () => clearInterval(interval);
+    }, [countdownExpired, gameId, navigate, GAME_SERVER_URL]);
+
+    // Mark ready handler
+    const handleMarkReady = async () => {
+        if (!gameId || loading) return;
+
+        try {
+            await markReadyPhase3(parseInt(gameId));
+            await loadReadyPlayers();
         } catch (error: any) {
-            console.error('[Phase3] Failed to mark ready:', error);
-            toast.error(error.message || 'Failed to mark ready');
-        } finally {
-            setIsMarkingReady(false);
+            console.error('Error marking ready:', error);
+            alert(error.message || 'Failed to mark ready');
         }
     };
 
-    // Connection status indicator
-    const ConnectionStatus = () => (
-        <div className="flex items-center gap-2 text-sm">
-            {connected ? (
-                <>
-                    <Wifi className="w-4 h-4 text-green-400" />
-                    <span className="text-green-400">Connected</span>
-                    {connectionQuality !== 'good' && (
-                        <Badge variant="outline" className="text-yellow-400 border-yellow-400">
-                            {connectionQuality}
-                        </Badge>
-                    )}
-                </>
-            ) : reconnecting ? (
-                <>
-                    <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
-                    <span className="text-yellow-400">Reconnecting...</span>
-                </>
-            ) : (
-                <>
-                    <WifiOff className="w-4 h-4 text-red-400" />
-                    <span className="text-red-400">Disconnected</span>
-                </>
-            )}
-        </div>
-    );
+    // Start game handler (after countdown)
+    const handleStartGame = async () => {
+        if (!socket || !gameId || !countdownExpired) return;
 
-    // Countdown display
-    const CountdownDisplay = () => {
-        if (!countdown) return null;
+        setGameStarting(true);
 
-        return (
-            <Alert className="bg-orange-900/30 border-orange-500 mb-6">
-                <Clock className="h-4 w-4" />
-                <AlertTitle className="text-orange-300 font-bold text-2xl">
-                    Game Starting in {countdown}s
-                </AlertTitle>
-                <AlertDescription className="text-orange-200">
-                    Prepare for battle! Non-ready players will be eliminated.
-                </AlertDescription>
-            </Alert>
-        );
+        try {
+            // Get all ready players
+            const playersForGame = readyPlayers
+                .filter(p => p.ready)
+                .map(p => ({
+                    walletAddress: p.walletAddress,
+                    name: p.name,
+                    vsolBalance: p.vsolBalance,
+                }));
+
+            if (playersForGame.length === 0) {
+                alert('No ready players!');
+                setGameStarting(false);
+                return;
+            }
+
+            // Tell server to start game
+            socket.emit('start-game', {
+                gameId: parseInt(gameId),
+                readyPlayers: playersForGame,
+            });
+
+            // Navigate will happen via socket event 'game-started'
+        } catch (error) {
+            console.error('Error starting game:', error);
+            setGameStarting(false);
+        }
     };
 
-    // Game info display
-    const GameInfo = () => {
-        if (!currentGame) return null;
-
-        return (
-            <Card className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border-purple-500/50">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Trophy className="w-6 h-6 text-yellow-400" />
-                        Game #{gameId}
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                            <p className="text-sm text-gray-400">Phase</p>
-                            <p className="text-2xl font-bold text-purple-400">3</p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Prize Pool</p>
-                            <p className="text-2xl font-bold text-green-400">
-                                {((currentGame.prizePool || 0) / 1e9).toFixed(2)} SOL
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Status</p>
-                            <Badge variant="outline" className={
-                                gamePhase === 'waiting' ? 'text-blue-400 border-blue-400' :
-                                    gamePhase === 'countdown' ? 'text-orange-400 border-orange-400' :
-                                        gamePhase === 'active' ? 'text-green-400 border-green-400' :
-                                            'text-red-400 border-red-400'
-                            }>
-                                {gamePhase}
-                            </Badge>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Players</p>
-                            <p className="text-2xl font-bold text-blue-400">
-                                {totalPlayers}
-                            </p>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        );
+    const formatTime = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // Players list
-    const PlayersList = () => (
-        <Card className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-gray-700">
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                        <Users className="w-6 h-6" />
-                        Players in Lobby
-                    </span>
-                    <Badge variant="outline" className="text-green-400 border-green-400">
-                        {readyCount}/{totalPlayers} Ready
-                    </Badge>
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {playersArray.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
-                        <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>Waiting for players to join...</p>
-                    </div>
-                ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {playersArray.map((player) => (
-                            <div
-                                key={player.id}
-                                className={`flex items-center justify-between p-3 rounded-lg ${player.id === wallet.publicKey?.toString()
-                                        ? 'bg-purple-900/30 border border-purple-500'
-                                        : 'bg-black/20'
-                                    }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    {player.ready ? (
-                                        <CheckCircle className="w-5 h-5 text-green-400" />
-                                    ) : (
-                                        <Clock className="w-5 h-5 text-gray-400" />
-                                    )}
-                                    <div>
-                                        <p className="font-mono text-sm">
-                                            {player.walletAddress.slice(0, 8)}...{player.walletAddress.slice(-6)}
-                                        </p>
-                                        {player.id === wallet.publicKey?.toString() && (
-                                            <Badge variant="outline" className="text-purple-400 border-purple-400 mt-1">
-                                                You
-                                            </Badge>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-sm text-gray-400">
-                                        {(player.vsolBalance / 1e9).toFixed(2)} VSOL
-                                    </p>
-                                    {player.ready && (
-                                        <Badge variant="outline" className="text-green-400 border-green-400 mt-1">
-                                            Ready
-                                        </Badge>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-    );
-
-    // Ready button
-    const ReadyButton = () => {
-        if (gamePhase !== 'waiting') return null;
-
+    if (!game) {
         return (
-            <Button
-                onClick={handleMarkReady}
-                disabled={!connected || isReady || isMarkingReady}
-                className={`w-full py-8 text-2xl font-black ${isReady
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-                    }`}
-                size="lg"
-            >
-                {isMarkingReady ? (
-                    <>
-                        <Loader2 className="w-8 h-8 mr-3 animate-spin" />
-                        Marking Ready...
-                    </>
-                ) : isReady ? (
-                    <>
-                        <CheckCircle className="w-8 h-8 mr-3" />
-                        ✅ YOU ARE READY
-                    </>
-                ) : (
-                    <>
-                        <UserCheck className="w-8 h-8 mr-3" />
-                        MARK READY
-                    </>
-                )}
-            </Button>
+            <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black flex items-center justify-center">
+                <div className="text-white text-2xl">Loading game...</div>
+            </div>
         );
-    };
+    }
 
-    // Main render
+    const totalPlayers = game.players.length;
+    const playersWithBalance = readyPlayers.length;
+    const eliminated = totalPlayers - playersWithBalance;
+    const totalVSOL = readyPlayers.reduce((sum, p) => sum + p.vsolBalance, 0);
+    const prizePool = game.prizePool / 1e9; // Convert lamports to SOL
+
     return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 via-black to-gray-900 relative overflow-hidden">
+        <div className="min-h-screen bg-gradient-to-br from-black via-red-950 to-black text-white relative overflow-hidden">
             <ParticleBackground />
 
-            <div className="relative z-20">
-                <Navbar />
-            </div>
-
-            <main className="relative z-10 container mx-auto px-4 pt-24 pb-16">
-                <div className="max-w-6xl mx-auto">
-                    {/* Header */}
-                    <div className="text-center mb-8">
-                        <h1 className="text-6xl md:text-8xl font-black mb-4">
-                            <span className="bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent">
-                                PHASE 3
-                            </span>
-                        </h1>
-                        <p className="text-2xl text-gray-300 mb-4">
-                            The Final Battle
-                        </p>
-                        <ConnectionStatus />
-                    </div>
-
-                    {/* Countdown */}
-                    <CountdownDisplay />
-
-                    {/* Game Info */}
-                    <div className="mb-6">
-                        <GameInfo />
-                    </div>
-
-                    {/* Game Phase Warning */}
-                    {gamePhase === 'countdown' && (
-                        <Alert className="bg-red-900/30 border-red-500 mb-6">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertTitle className="text-red-300 font-bold">
-                                Countdown Started!
-                            </AlertTitle>
-                            <AlertDescription className="text-red-200">
-                                {isReady
-                                    ? 'You are ready for battle. Prepare yourself!'
-                                    : 'You are NOT ready! You will be eliminated when the game starts!'}
-                            </AlertDescription>
-                        </Alert>
-                    )}
-
-                    {/* Ready Button */}
-                    {gamePhase === 'waiting' && (
-                        <div className="mb-6">
-                            <ReadyButton />
-                        </div>
-                    )}
-
-                    {/* Instructions */}
-                    {gamePhase === 'waiting' && (
-                        <Card className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-blue-500/50 mb-6">
-                            <CardContent className="pt-6">
-                                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                                    <Target className="w-6 h-6 text-blue-400" />
-                                    Game Rules
-                                </h3>
-                                <ul className="space-y-2 text-gray-300">
-                                    <li className="flex items-start gap-2">
-                                        <Zap className="w-5 h-5 text-yellow-400 mt-0.5" />
-                                        Mark yourself as ready to join the battle
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <Users className="w-5 h-5 text-blue-400 mt-0.5" />
-                                        Game starts when 2+ players are ready
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <Clock className="w-5 h-5 text-orange-400 mt-0.5" />
-                                        10 second countdown before game start
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <Trophy className="w-5 h-5 text-green-400 mt-0.5" />
-                                        Safe zone shrinks every 60 seconds
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <Target className="w-5 h-5 text-red-400 mt-0.5" />
-                                        Stay inside the safe zone or take damage
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <Coins className="w-5 h-5 text-yellow-400 mt-0.5" />
-                                        Last player standing wins the prize pool
-                                    </li>
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Players List */}
-                    <PlayersList />
-
-                    {/* Connection Issues */}
-                    {!connected && !reconnecting && (
-                        <Alert className="bg-red-900/30 border-red-500 mt-6">
-                            <WifiOff className="h-4 w-4" />
-                            <AlertTitle className="text-red-300 font-bold">
-                                Connection Lost
-                            </AlertTitle>
-                            <AlertDescription className="text-red-200">
-                                Unable to connect to game server. Please refresh the page.
-                            </AlertDescription>
-                        </Alert>
-                    )}
+            <div className="relative z-10 container mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="text-center mb-8">
+                    <h1 className="text-6xl font-black bg-gradient-to-r from-red-500 via-orange-500 to-red-500 bg-clip-text text-transparent mb-4 drop-shadow-2xl">
+                        💀 PHASE 3: THE PURGE 💀
+                    </h1>
+                    <p className="text-xl text-red-300">
+                        Only the strongest survive. Mark ready to enter the arena.
+                    </p>
                 </div>
-            </main>
 
-            <Footer />
+                {/* Stats Grid */}
+                <div className="grid md:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-black/60 backdrop-blur-xl border-2 border-red-500/50 rounded-xl p-6 text-center">
+                        <Trophy className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                        <div className="text-3xl font-bold text-yellow-400">{totalVSOL.toFixed(0)}</div>
+                        <div className="text-sm text-red-300">Total VSOL</div>
+                    </div>
+
+                    <div className="bg-black/60 backdrop-blur-xl border-2 border-blue-500/50 rounded-xl p-6 text-center">
+                        <Users className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                        <div className="text-3xl font-bold text-blue-400">{playersWithBalance}</div>
+                        <div className="text-sm text-red-300">Active Players</div>
+                    </div>
+
+                    <div className="bg-black/60 backdrop-blur-xl border-2 border-gray-500/50 rounded-xl p-6 text-center">
+                        <Skull className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <div className="text-3xl font-bold text-gray-400">{eliminated}</div>
+                        <div className="text-sm text-red-300">Eliminated</div>
+                    </div>
+
+                    <div className="bg-black/60 backdrop-blur-xl border-2 border-orange-500/50 rounded-xl p-6 text-center">
+                        <Trophy className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+                        <div className="text-3xl font-bold text-orange-400">{prizePool.toFixed(2)}</div>
+                        <div className="text-sm text-red-300">Prize Pool (SOL)</div>
+                    </div>
+                </div>
+
+                {/* Countdown Timer */}
+                {!countdownExpired && (
+                    <div className="bg-gradient-to-br from-black/90 to-red-950/60 backdrop-blur-xl border-4 border-red-500/70 rounded-2xl p-8 mb-8 text-center shadow-2xl">
+                        <Clock className="w-16 h-16 text-red-400 mx-auto mb-4 animate-pulse" />
+                        <h2 className="text-4xl font-black text-red-400 mb-2">COUNTDOWN TO BATTLE</h2>
+                        <div className="text-8xl font-black bg-gradient-to-r from-red-500 via-orange-500 to-red-500 bg-clip-text text-transparent">
+                            {formatTime(timeLeft)}
+                        </div>
+                        <p className="text-red-300 mt-4 text-xl">
+                            Mark yourself ready before time runs out!
+                        </p>
+                    </div>
+                )}
+
+                {/* Game Start Button (after countdown) */}
+                {countdownExpired && !gameStarting && (
+                    <div className="bg-gradient-to-br from-black/90 to-green-950/60 backdrop-blur-xl border-4 border-green-500/70 rounded-2xl p-8 mb-8 text-center shadow-2xl">
+                        <h2 className="text-4xl font-black text-green-400 mb-4">⚔️ READY FOR BATTLE ⚔️</h2>
+                        <p className="text-green-300 mb-6 text-lg">
+                            Countdown expired! Any ready player can start the game.
+                        </p>
+                        <Button
+                            variant="hero"
+                            size="lg"
+                            onClick={handleStartGame}
+                            disabled={readyPlayers.filter(p => p.ready).length === 0}
+                            className="text-2xl px-12 py-6"
+                        >
+                            {checkingGameStart ? (
+                                <>
+                                    <Loader2 className="w-6 h-6 mr-2 animate-spin" />
+                                    Checking if started...
+                                </>
+                            ) : (
+                                <>🎮 START THE PURGE</>
+                            )}
+                        </Button>
+                    </div>
+                )}
+
+                {/* Starting Screen */}
+                {gameStarting && (
+                    <div className="bg-gradient-to-br from-black/95 to-red-950/80 backdrop-blur-xl border-4 border-red-500/70 rounded-2xl p-12 mb-8 text-center shadow-2xl">
+                        <Loader2 className="w-24 h-24 text-red-500 mx-auto mb-6 animate-spin" />
+                        <h2 className="text-5xl font-black text-red-400 mb-4">🔥 STARTING GAME 🔥</h2>
+                        <p className="text-red-300 text-xl">Loading arena... Prepare for battle!</p>
+                    </div>
+                )}
+
+                <div className="grid lg:grid-cols-3 gap-6">
+                    {/* Players List */}
+                    <div className="lg:col-span-2 bg-black/60 backdrop-blur-xl border-2 border-red-500/50 rounded-xl p-6">
+                        <h2 className="text-2xl font-bold text-red-400 mb-4 flex items-center">
+                            <Users className="w-6 h-6 mr-2" />
+                            Players with VSOL Balance
+                        </h2>
+
+                        <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                            {readyPlayers.map((player) => (
+                                <div
+                                    key={player.walletAddress}
+                                    className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${player.ready
+                                        ? 'bg-green-500/20 border-green-500/50'
+                                        : 'bg-red-500/10 border-red-500/30'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {player.ready ? (
+                                            <CheckCircle className="w-6 h-6 text-green-400" />
+                                        ) : (
+                                            <XCircle className="w-6 h-6 text-red-400" />
+                                        )}
+                                        <div>
+                                            <div className="font-mono text-sm">{player.name}</div>
+                                            <div className="text-xs text-gray-400">{player.walletAddress}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                        <div className="text-xl font-bold text-orange-400">
+                                            {player.vsolBalance.toFixed(0)} VSOL
+                                        </div>
+                                        <div className={`text-sm font-semibold ${player.ready ? 'text-green-400' : 'text-red-400'}`}>
+                                            {player.ready ? '✓ READY' : 'NOT READY'}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Ready Status & Actions */}
+                    <div className="space-y-6">
+                        {/* My Status */}
+                        <div className="bg-black/60 backdrop-blur-xl border-2 border-orange-500/50 rounded-xl p-6">
+                            <h3 className="text-xl font-bold text-orange-400 mb-4">Your Status</h3>
+
+                            {myReadyState ? (
+                                <div className="space-y-4">
+                                    <div className="text-center">
+                                        <div className={`text-6xl mb-2 ${myReadyState.ready ? 'animate-bounce' : ''}`}>
+                                            {myReadyState.ready ? '✅' : '⏳'}
+                                        </div>
+                                        <div className={`text-2xl font-bold ${myReadyState.ready ? 'text-green-400' : 'text-red-400'}`}>
+                                            {myReadyState.ready ? 'READY FOR BATTLE' : 'NOT READY'}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-orange-500/20 border border-orange-500/50 rounded-lg p-4">
+                                        <div className="text-sm text-orange-300 mb-1">Your VSOL Balance</div>
+                                        <div className="text-3xl font-bold text-orange-400">
+                                            {myReadyState.vsolBalance.toFixed(0)}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <div className="text-4xl mb-4">⚠️</div>
+                                    <div className="text-red-400 font-semibold">Not participating</div>
+                                    <div className="text-sm text-gray-400 mt-2">No VSOL balance in Phase 2</div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Mark Ready Button */}
+                        {myReadyState && !myReadyState.ready && !countdownExpired && (
+                            <Button
+                                variant="hero"
+                                size="lg"
+                                onClick={handleMarkReady}
+                                disabled={loading}
+                                className="w-full text-xl"
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                        Marking Ready...
+                                    </>
+                                ) : (
+                                    <>✓ MARK READY</>
+                                )}
+                            </Button>
+                        )}
+
+                        {/* Info */}
+                        <div className="bg-black/60 backdrop-blur-xl border-2 border-blue-500/50 rounded-xl p-6">
+                            <h3 className="text-lg font-bold text-blue-400 mb-3">Game Rules</h3>
+                            <ul className="space-y-2 text-sm text-gray-300">
+                                <li>• All ready players enter the arena</li>
+                                <li>• You start with your VSOL balance</li>
+                                <li>• Safe zone shrinks over time</li>
+                                <li>• Push others out of safe zone</li>
+                                <li>• Last player alive wins</li>
+                                <li>• If disconnected, you stay in game</li>
+                                <li>• Winner takes the entire prize pool</li>
+                            </ul>
+                        </div>
+
+                        {/* Ready Players Count */}
+                        <div className="bg-black/60 backdrop-blur-xl border-2 border-green-500/50 rounded-xl p-6 text-center">
+                            <div className="text-5xl font-black text-green-400 mb-2">
+                                {readyPlayers.filter(p => p.ready).length}
+                            </div>
+                            <div className="text-sm text-green-300">Players Ready</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
 
-export default Phase3;
+export default Phase3Lobby;

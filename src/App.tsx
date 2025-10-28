@@ -8,7 +8,7 @@ import Lobby from "./pages/Lobby";
 import Roadmap from "./pages/Roadmap";
 import Phase1 from "./pages/Phase1";
 import Phase2 from "./pages/Phase2";
-import Phase3 from "./pages/Phase3"; // 👈 ADD THIS
+import Phase3Lobby from "./pages/Phase3"; // 👈 ADD THIS
 import Tokenomics from "./pages/Tokenomics";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -35,7 +35,7 @@ const App = () => (
           <Route path="/roadmap" element={<Roadmap />} />
           <Route path="/phase1" element={<Phase1 />} />
           <Route path="/phase2" element={<Phase2 />} />
-          <Route path="/phase3" element={<Phase3 />} /> {/* 👈 ADD THIS */}
+          <Route path="/phase3" element={<Phase3Lobby />} /> {/* 👈 ADD THIS */}
           <Route path="/phase3/winner" element={<Phase3Winner />} />
           <Route path="/games/crypto-trivia" element={<CryptoTrivia />} />
           <Route path="/games/rock-paper-scissors" element={<RockPaperScissors />} />

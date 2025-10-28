@@ -40,7 +40,7 @@ class WebSocketManager {
     private gameStateCallbacks: Set<(state: GameStateMessage['gameState']) => void> = new Set();
 
     constructor() {
-        this.wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+        this.wsUrl = import.meta.env.VITE_WS_URL || 'wss://purge-server-production.up.railway.app';
     }
 
     connect(gameId: number, playerId: string, handlersId: string, handlers: MessageHandler) {

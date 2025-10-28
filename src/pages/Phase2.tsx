@@ -877,7 +877,7 @@ export default function Phase2() {
                                                             <div className="text-lg font-bold text-sol-orange">
                                                                 {(player.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)}
                                                             </div>
-                                                            <div className="text-xs text-muted-foreground">SOL</div>
+                                                            <div className="text-xs text-muted-foreground">vSOL</div>
                                                         </div>
                                                     </div>
                                                     {(!canChallenge || phaseExpired) && (
@@ -931,7 +931,7 @@ export default function Phase2() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-3">Bet Amount (SOL)</label>
+                                <label className="block text-sm font-medium mb-3">Bet Amount (vSOL)</label>
                                 <div className="relative">
                                     <input
                                         type="number"
@@ -950,7 +950,7 @@ export default function Phase2() {
                                 </div>
                                 {playerState && (
                                     <p className="text-xs text-muted-foreground mt-2">
-                                        Max: {(playerState.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                                        Max: {(playerState.virtualBalance / LAMPORTS_PER_SOL).toFixed(4)} vSOL
                                     </p>
                                 )}
                             </div>
@@ -1017,7 +1017,7 @@ export default function Phase2() {
                                                         </p>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="font-bold text-sol-orange">{challenge.betAmount.toFixed(4)} SOL</p>
+                                                        <p className="font-bold text-sol-orange">{challenge.betAmount.toFixed(4)} vSOL</p>
                                                         <p className="text-xs text-green-400">{challenge.status}</p>
                                                     </div>
                                                 </div>
@@ -1094,7 +1094,7 @@ export default function Phase2() {
                                             </p>
 
                                             <p className="font-bold text-sol-orange text-lg mb-4">
-                                                {challenge.betAmount.toFixed(4)} SOL
+                                                {challenge.betAmount.toFixed(4)} vSOL
                                             </p>
 
                                             {checkStatus(challenge, 'Accepted') && (
@@ -1180,7 +1180,7 @@ export default function Phase2() {
                                                 <span>{gameTypeData?.icon}</span>
                                                 {gameTypeData?.name}
                                             </p>
-                                            <p className="font-bold text-sol-orange">{challenge.betAmount.toFixed(4)} SOL</p>
+                                            <p className="font-bold text-sol-orange">{challenge.betAmount.toFixed(4)} vSOL</p>
                                         </div>
                                     );
                                 })}

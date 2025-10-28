@@ -66,7 +66,7 @@ class WebSocketManager {
         this.currentPlayerId = playerId;
         this.connectionState = 'connecting';
 
-        const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+        const wsUrl = import.meta.env.VITE_WS_URL || 'wss://purge-server-production.up.railway.app';
         const url = `${wsUrl}?gameId=${gameId}&playerId=${playerId}`;
 
         console.log(`🔗 [WebSocketManager] Connecting (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}):`, url);
