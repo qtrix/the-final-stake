@@ -1,69 +1,224 @@
-# React + TypeScript + Vite
+# The Final Stake
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Learn DeFi by Risking What YOU Choose**
 
-Currently, two official plugins are available:
+A revolutionary gamified DeFi learning platform built on Solana. Instead of losing thousands of dollars learning DeFi in real markets, risk what you're comfortable with—from $15 to unlimited—in a controlled, educational environment.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+[![Website](https://img.shields.io/badge/Website-final--stake.xyz-blue)](https://final-stake.xyz)
+[![Whitepaper](https://img.shields.io/badge/Docs-Whitepaper-green)](https://finalstake.gitbook.io/final-stake)
+[![Solana](https://img.shields.io/badge/Built%20on-Solana-9945FF?logo=solana)](https://solana.com)
 
-## Expanding the ESLint configuration
+## What is The Final Stake?
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The Final Stake is a 24-hour survival game where 100 players compete using real SOL. Unlike traditional gambling or risky DeFi investments, this is a **structured learning environment** that teaches you real DeFi mechanics through gameplay.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Think of it as a flight simulator for DeFi traders—practice with real stakes, but in a controlled environment where you choose your risk level.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Key Features
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 💰 Flexible Entry
+- **Minimum**: 0.10 SOL (~$15)
+- **Maximum**: Unlimited
+- **Your Choice**: Risk only what you're comfortable losing
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 🏆 Dynamic Prize Pools
+- Bigger stakes = Bigger prizes
+- Transparent prize distribution
+- Real-time pool tracking
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 🎯 Strategy Focused
+- Skill matters more than starting capital
+- Multiple paths to victory
+- Learn by competing
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 📚 Educational Value
+- Experience real DeFi mechanics
+- Learn resource management
+- Practice risk assessment
+- Understand market dynamics
+
+### 🛡️ Fair Play
+- Anti-whale mechanics protect small players
+- Balanced gameplay regardless of entry amount
+- Equal opportunity to win
+
+### 📊 Full Transparency
+- See game statistics before entering
+- Track your performance
+- Review past games
+
+## Why The Final Stake?
+
+### Traditional DeFi Learning
+❌ Risk thousands in real markets  
+❌ Learn through expensive mistakes  
+❌ No control over loss amounts  
+❌ Stressful and unpredictable  
+
+### The Final Stake Approach
+✅ Control your risk level  
+✅ Learn by doing in safe environment  
+✅ No unexpected losses beyond entry  
+✅ Gain skills for real markets  
+✅ Learn from community  
+
+> **Play with $15. Play with $1,500. Either way, you'll learn $2,000 worth of lessons.**
+
+## How It Works
+
+### Game Structure: 24-Hour Survival
+
+The game is divided into three phases, each teaching different DeFi concepts:
+
+#### Phase 1: Resource Management (8 hours)
+Learn about:
+- Capital allocation strategies
+- Resource optimization
+- Risk-reward balance
+- Market competition dynamics
+
+#### Phase 2: PvP Trading (8 hours)
+Practice:
+- Strategic decision making
+- Risk assessment
+- Competitive trading
+- Position management
+
+#### Phase 3: The Final Stake (8 hours)
+Experience:
+- High-pressure decision making
+- Winner-takes-all dynamics
+- Ultimate risk management
+- Survival strategies
+
+## Quick Start
+
+Ready to begin your DeFi education?
+
+### 1. **Connect Your Wallet**
+   - Install a Solana wallet (Phantom, Solflare, etc.)
+   - Ensure you have at least 0.10 SOL
+
+### 2. **Choose Your Entry Amount**
+   - Minimum: 0.10 SOL (~$15)
+   - Maximum: Your choice
+   - Consider this your tuition fee
+
+### 3. **Join a Game Lobby**
+   - Review game statistics
+   - Check current prize pool
+   - Wait for game to start (100 players max)
+
+### 4. **Compete & Learn**
+   - Play through all three phases
+   - Make strategic decisions
+   - Learn valuable DeFi lessons
+
+### 5. **Reflect & Improve**
+   - Win or lose, you gain knowledge
+   - Review your performance
+   - Apply lessons to next game
+
+## What You'll Learn
+
+### DeFi Fundamentals
+- Position sizing
+- Risk management
+- Capital allocation
+- Market dynamics
+
+### Trading Psychology
+- Decision making under pressure
+- Handling wins and losses
+- Strategic thinking
+- Resource optimization
+
+### Real-World Skills
+- Applicable to actual DeFi trading
+- Risk assessment frameworks
+- Portfolio management
+- Competitive strategy
+
+## For Players
+
+### Beginners
+Start with 0.10 SOL to learn the ropes without significant risk. Focus on understanding mechanics over winning.
+
+### Intermediate
+Increase your stake to 0.5-1 SOL. Practice advanced strategies and test your skills against experienced players.
+
+### Advanced
+Go bigger to compete for substantial prizes. Use your DeFi knowledge to maximize your edge.
+
+## Safety & Fairness
+
+- **Transparent Smart Contracts**: All game logic is on-chain and auditable
+- **Fair Play Mechanics**: Anti-whale features ensure balanced gameplay
+- **No Hidden Fees**: Platform fee is clearly stated (1% of prize pool)
+- **Secure**: Built on Solana's secure blockchain infrastructure
+
+## Technology Stack
+
+- **Blockchain**: Solana
+- **Smart Contracts**: Anchor Framework
+- **Frontend**: React + TypeScript
+- **Real-time**: WebSocket multiplayer
+- **Wallet Integration**: Solana Wallet Adapter
+
+## Community & Support
+
+- **Website**: [final-stake.xyz](https://final-stake.xyz)
+- **Documentation**: [Whitepaper](https://finalstake.gitbook.io/final-stake)
+- **X**: [@FinalStake](https://x.com/_final_stake) (example)
+- **Discord**: [Join our community](https://discord.gg/gxrM6XxA) (example)
+
+## FAQ
+
+**Q: Is this gambling?**  
+A: No. This is an educational platform that uses game mechanics to teach DeFi concepts. While there is risk involved, the primary goal is learning.
+
+**Q: What if I lose?**  
+A: You'll gain valuable knowledge worth far more than your entry fee. Think of it as paying for an intensive DeFi course.
+
+**Q: Can I play with more than the minimum?**  
+A: Yes! You can enter with any amount you're comfortable risking. Higher stakes mean bigger potential prizes.
+
+**Q: How long does a game last?**  
+A: Each game runs for 24 hours with three 8-hour phases.
+
+**Q: Is it fair for small players?**  
+A: Yes! Anti-whale mechanics ensure that skill matters more than starting capital.
+
+**Q: How do I know it's not rigged?**  
+A: All game logic runs on transparent smart contracts on the Solana blockchain. Anyone can verify the code.
+
+## Roadmap
+
+- [x] Launch MVP on Solana devnet
+- [x] Multi-player WebSocket integration
+- [ ] Tournament mode
+- [ ] Leaderboards & achievements
+- [ ] Educational content library
+- [ ] Mobile app
+- [ ] Multiple game modes
+- [ ] Partner integrations
+
+## Contributing
+
+We welcome contributions from the community! Whether it's bug reports, feature requests, or code contributions, please feel free to get involved.
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details
+
+## Disclaimer
+
+The Final Stake is an educational platform that involves financial risk. Only participate with funds you can afford to lose. This is not financial advice. Always do your own research.
+
+---
+
+**Remember**: Every expert was once a beginner who chose to learn. Start your DeFi education today.
+
+**Play Responsibly. Learn Continuously. Compete Fairly.**
+
+[![Play Now](https://img.shields.io/badge/Play%20Now-final--stake.xyz-brightgreen?style=for-the-badge)](https://final-stake.xyz)
