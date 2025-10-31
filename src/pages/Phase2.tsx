@@ -12,6 +12,7 @@ import Navbar from '@/components/Navbar';
 import PhaseCountdown from '@/components/PhaseCountdown';
 import GameModal from '@/components/phase2/GameModal';
 import TransactionOverlay from '@/components/TransactionOverlay';
+import { retryTransaction } from '@/utils/transactionHelper';
 import {
     Swords, Users, Trophy, Coins, ArrowLeft, Loader2, Clock, Zap,
     AlertTriangle, Target, TrendingUp, ArrowRight
@@ -286,7 +287,12 @@ export default function Phase2() {
         setTransactionLoading(true);
 
         try {
-            await solanaGame.advanceToPhase3(currentGame.gameId);
+            // ✅ Folosește retryTransaction din helper
+            await retryTransaction(
+                () => solanaGame.advanceToPhase3(currentGame.gameId),
+                'Advance to Phase 3',
+                3 // maxRetries
+            );
 
             toast.success('Advanced to Phase 3!', {
                 description: 'Game moved successfully to Phase 3. All eligible players can now mark READY.',

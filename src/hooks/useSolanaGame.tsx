@@ -1,4 +1,4 @@
-// src/hooks/useSolanaGame.tsx - VERSIUNE CU CONFIRMĂRI EXPLICITE
+// src/hooks/useSolanaGame.tsx - VERSIUNE CU CONFIRMĂRI EXPLICITE ȘI SETLOADING CONSISTENT
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, web3, BN } from '@coral-xyz/anchor';
@@ -544,6 +544,7 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
+    setLoading(true);
     try {
       const [gamePDA] = getGamePDA(program.programId, gameId);
 
@@ -634,6 +635,8 @@ export function useSolanaGame() {
         error: error.message,
       });
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -646,6 +649,7 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
+    setLoading(true);
     try {
       onProgress?.({
         status: 'starting',
@@ -679,6 +683,8 @@ export function useSolanaGame() {
         error: error.message,
       });
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -688,21 +694,26 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
 
-    const tx = await program.methods
-      .initializePlayerState()
-      .accounts({
-        playerState: playerStatePDA,
-        game: gamePDA,
-        player: wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .initializePlayerState()
+        .accounts({
+          playerState: playerStatePDA,
+          game: gamePDA,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    await fetchGames(program);
+      await confirmTransaction(program.provider.connection, tx);
+      await fetchGames(program);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ INITIALIZE POOL STATE - cu confirmare
@@ -711,21 +722,26 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
 
-    const tx = await program.methods
-      .initializePoolState()
-      .accounts({
-        poolState: poolStatePDA,
-        game: gamePDA,
-        authority: wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .initializePoolState()
+        .accounts({
+          poolState: poolStatePDA,
+          game: gamePDA,
+          authority: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    await fetchGames(program);
+      await confirmTransaction(program.provider.connection, tx);
+      await fetchGames(program);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ SUBMIT ALLOCATIONS - cu confirmare
@@ -743,36 +759,41 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
-    const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
+      const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
 
-    const allocationsInLamports = {
-      mining: new BN(Math.floor(allocations.mining * LAMPORTS_PER_SOL)),
-      farming: new BN(Math.floor(allocations.farming * LAMPORTS_PER_SOL)),
-      trading: new BN(Math.floor(allocations.trading * LAMPORTS_PER_SOL)),
-      research: new BN(Math.floor(allocations.research * LAMPORTS_PER_SOL)),
-      social: new BN(Math.floor(allocations.social * LAMPORTS_PER_SOL))
-    };
+      const allocationsInLamports = {
+        mining: new BN(Math.floor(allocations.mining * LAMPORTS_PER_SOL)),
+        farming: new BN(Math.floor(allocations.farming * LAMPORTS_PER_SOL)),
+        trading: new BN(Math.floor(allocations.trading * LAMPORTS_PER_SOL)),
+        research: new BN(Math.floor(allocations.research * LAMPORTS_PER_SOL)),
+        social: new BN(Math.floor(allocations.social * LAMPORTS_PER_SOL))
+      };
 
-    const tx = await program.methods
-      .submitAllocations(
-        allocationsInLamports.mining,
-        allocationsInLamports.farming,
-        allocationsInLamports.trading,
-        allocationsInLamports.research,
-        allocationsInLamports.social
-      )
-      .accounts({
-        playerState: playerStatePDA,
-        poolState: poolStatePDA,
-        game: gamePDA,
-        player: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .submitAllocations(
+          allocationsInLamports.mining,
+          allocationsInLamports.farming,
+          allocationsInLamports.trading,
+          allocationsInLamports.research,
+          allocationsInLamports.social
+        )
+        .accounts({
+          playerState: playerStatePDA,
+          poolState: poolStatePDA,
+          game: gamePDA,
+          player: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ CLAIM REWARDS - cu confirmare
@@ -781,22 +802,27 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
-    const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
+      const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
 
-    const tx = await program.methods
-      .claimRewards()
-      .accounts({
-        playerState: playerStatePDA,
-        poolState: poolStatePDA,
-        game: gamePDA,
-        player: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .claimRewards()
+        .accounts({
+          playerState: playerStatePDA,
+          poolState: poolStatePDA,
+          game: gamePDA,
+          player: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ CLAIM ALL PHASE END REWARDS - cu confirmare per batch
@@ -808,49 +834,54 @@ export function useSolanaGame() {
       throw new Error('Program not initialized');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const game = await (program.account as any).game.fetch(gamePDA);
-    const players = game.players;
-    const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const game = await (program.account as any).game.fetch(gamePDA);
+      const players = game.players;
+      const [poolStatePDA] = getPoolStatePDA(program.programId, gameId);
 
-    const BATCH_SIZE = 10;
-    const batches = [];
-    for (let i = 0; i < players.length; i += BATCH_SIZE) {
-      batches.push(players.slice(i, i + BATCH_SIZE));
-    }
+      const BATCH_SIZE = 10;
+      const batches = [];
+      for (let i = 0; i < players.length; i += BATCH_SIZE) {
+        batches.push(players.slice(i, i + BATCH_SIZE));
+      }
 
-    let processed = 0;
+      let processed = 0;
 
-    for (const batch of batches) {
-      const claimPromises = batch.map(async (player: PublicKey) => {
-        try {
-          const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, player);
+      for (const batch of batches) {
+        const claimPromises = batch.map(async (player: PublicKey) => {
+          try {
+            const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, player);
 
-          const tx = await program.methods
-            .claimPhaseEndRewards()
-            .accounts({
-              playerState: playerStatePDA,
-              poolState: poolStatePDA,
-              game: gamePDA,
-              player: player,
-            })
-            .rpc({ skipPreflight: false, commitment: 'confirmed' });
+            const tx = await program.methods
+              .claimPhaseEndRewards()
+              .accounts({
+                playerState: playerStatePDA,
+                poolState: poolStatePDA,
+                game: gamePDA,
+                player: player,
+              })
+              .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-          // ✅ Confirmare
-          await confirmTransaction(program.provider.connection, tx);
+            // ✅ Confirmare
+            await confirmTransaction(program.provider.connection, tx);
 
-          processed++;
-          onProgress?.(processed, players.length);
-          return { player: player.toString(), success: true };
-        } catch (error) {
-          console.error(`Failed to claim for ${player.toString()}:`, error);
-          processed++;
-          onProgress?.(processed, players.length);
-          return { player: player.toString(), success: false, error };
-        }
-      });
+            processed++;
+            onProgress?.(processed, players.length);
+            return { player: player.toString(), success: true };
+          } catch (error) {
+            console.error(`Failed to claim for ${player.toString()}:`, error);
+            processed++;
+            onProgress?.(processed, players.length);
+            return { player: player.toString(), success: false, error };
+          }
+        });
 
-      await Promise.allSettled(claimPromises);
+        await Promise.allSettled(claimPromises);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -863,6 +894,7 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
+    setLoading(true);
     try {
       onProgress?.({ step: 'Advancing to next phase...', progress: 50 });
 
@@ -899,6 +931,8 @@ export function useSolanaGame() {
     } catch (error: any) {
       onProgress?.({ step: 'Failed to advance phase', progress: 0 });
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -991,40 +1025,45 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [playerStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
 
-    const timestamp = Math.floor(Date.now() / 1000);
-    const [challengePDA] = getChallengePDA(program.programId, gameId, wallet.publicKey, opponent, timestamp);
+      const timestamp = Math.floor(Date.now() / 1000);
+      const [challengePDA] = getChallengePDA(program.programId, gameId, wallet.publicKey, opponent, timestamp);
 
-    const gameTypeEnum = {
-      CryptoTrivia: { cryptoTrivia: {} },
-      RockPaperScissors: { rockPaperScissors: {} },
-      SpeedTrading: { speedTrading: {} },
-      MemeBattle: { memeBattle: {} },
-    }[gameType];
+      const gameTypeEnum = {
+        CryptoTrivia: { cryptoTrivia: {} },
+        RockPaperScissors: { rockPaperScissors: {} },
+        SpeedTrading: { speedTrading: {} },
+        MemeBattle: { memeBattle: {} },
+      }[gameType];
 
-    const tx = await program.methods
-      .createChallenge(
-        opponent,
-        new BN(timestamp),
-        new BN(betAmount * LAMPORTS_PER_SOL),
-        gameTypeEnum
-      )
-      .accounts({
-        challenge: challengePDA,
-        game: gamePDA,
-        playerState: playerStatePDA,
-        challenger: wallet.publicKey,
-        opponent: opponent,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .createChallenge(
+          opponent,
+          new BN(timestamp),
+          new BN(betAmount * LAMPORTS_PER_SOL),
+          gameTypeEnum
+        )
+        .accounts({
+          challenge: challengePDA,
+          game: gamePDA,
+          playerState: playerStatePDA,
+          challenger: wallet.publicKey,
+          opponent: opponent,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    rpcCache.invalidate(`pending_challenges_${gameId}_${opponent.toBase58()}`);
-    rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      rpcCache.invalidate(`pending_challenges_${gameId}_${opponent.toBase58()}`);
+      rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ RESPOND TO CHALLENGE - cu confirmare
@@ -1037,23 +1076,28 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [opponentStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [opponentStatePDA] = getPlayerStatePDA(program.programId, gameId, wallet.publicKey);
 
-    const tx = await program.methods
-      .respondChallenge(accept)
-      .accounts({
-        challenge: challengePDA,
-        game: gamePDA,
-        opponentState: opponentStatePDA,
-        opponent: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .respondChallenge(accept)
+        .accounts({
+          challenge: challengePDA,
+          game: gamePDA,
+          opponentState: opponentStatePDA,
+          opponent: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    rpcCache.invalidate(`pending_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
-    rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      rpcCache.invalidate(`pending_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+      rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ MARK READY - cu confirmare
@@ -1062,16 +1106,21 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const tx = await program.methods
-      .readyForGame()
-      .accounts({
-        challenge: challengePDA,
-        player: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+    setLoading(true);
+    try {
+      const tx = await program.methods
+        .readyForGame()
+        .accounts({
+          challenge: challengePDA,
+          player: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ START MINI GAME - cu confirmare
@@ -1080,16 +1129,21 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const tx = await program.methods
-      .startMiniGame()
-      .accounts({
-        challenge: challengePDA,
-        player: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+    setLoading(true);
+    try {
+      const tx = await program.methods
+        .startMiniGame()
+        .accounts({
+          challenge: challengePDA,
+          player: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ CLAIM MINI GAME WIN - cu confirmare
@@ -1103,26 +1157,31 @@ export function useSolanaGame() {
       throw new Error('Wallet not connected');
     }
 
-    const [gamePDA] = getGamePDA(program.programId, gameId);
-    const [winnerStatePDA] = getPlayerStatePDA(program.programId, gameId, winner);
-    const [loserStatePDA] = getPlayerStatePDA(program.programId, gameId, loser);
+    setLoading(true);
+    try {
+      const [gamePDA] = getGamePDA(program.programId, gameId);
+      const [winnerStatePDA] = getPlayerStatePDA(program.programId, gameId, winner);
+      const [loserStatePDA] = getPlayerStatePDA(program.programId, gameId, loser);
 
-    const tx = await program.methods
-      .claimMiniGameWin(winner)
-      .accounts({
-        challenge: challengePDA,
-        game: gamePDA,
-        winnerState: winnerStatePDA,
-        loserState: loserStatePDA,
-        claimer: wallet.publicKey,
-      })
-      .rpc({ skipPreflight: false, commitment: 'confirmed' });
+      const tx = await program.methods
+        .claimMiniGameWin(winner)
+        .accounts({
+          challenge: challengePDA,
+          game: gamePDA,
+          winnerState: winnerStatePDA,
+          loserState: loserStatePDA,
+          claimer: wallet.publicKey,
+        })
+        .rpc({ skipPreflight: false, commitment: 'confirmed' });
 
-    await confirmTransaction(program.provider.connection, tx);
-    rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
-    rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
-    rpcCache.invalidate(`player_stats_${gameId}_${wallet.publicKey!.toBase58()}`);
-    return tx;
+      await confirmTransaction(program.provider.connection, tx);
+      rpcCache.invalidate(`active_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+      rpcCache.invalidate(`my_challenges_${gameId}_${wallet.publicKey!.toBase58()}`);
+      rpcCache.invalidate(`player_stats_${gameId}_${wallet.publicKey!.toBase58()}`);
+      return tx;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getPendingChallenges = async (gameId: number): Promise<Challenge[]> => {
@@ -1482,7 +1541,7 @@ export function useSolanaGame() {
         ready: state.account.ready,
         virtualBalance: state.account.virtualBalance
           ? state.account.virtualBalance.toNumber()
-          : 0, // ✅ ADD THIS LINE!
+          : 0,
         markedReadyAt: new Date(state.account.markedReadyAt.toNumber() * 1000),
       }));
     } catch (error) {
@@ -1531,6 +1590,8 @@ export function useSolanaGame() {
       setLoading(false);
     }
   };
+
+  // ✅ FORCE REFUND EXPIRED GAME - cu confirmare
   const forceRefundExpiredGame = async (gameId: number) => {
     if (!program || !wallet.publicKey) {
       throw new Error('Wallet not connected');
@@ -1556,6 +1617,19 @@ export function useSolanaGame() {
       setLoading(false);
     }
   };
+
+  const getPlayerBalance = useCallback(async (gameId: number, playerPubkey: PublicKey): Promise<number> => {
+    try {
+      const playerState = await getPlayerState(gameId, playerPubkey);
+      if (!playerState) return 0;
+
+      // virtualBalance is already in lamports, convert to SOL
+      return playerState.virtualBalance / LAMPORTS_PER_SOL;
+    } catch (error) {
+      console.warn(`⚠️ Failed to get balance for ${playerPubkey.toBase58().slice(0, 8)}`);
+      return 0;
+    }
+  }, [getPlayerState]);
 
   return {
     program,
@@ -1595,5 +1669,6 @@ export function useSolanaGame() {
     submitPhase3Winner,
     claimPhase3Prize,
     forceRefundExpiredGame,
+    getPlayerBalance,
   };
 }

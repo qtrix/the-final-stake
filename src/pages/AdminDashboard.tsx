@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import solanaIdl from '../lib/solana_survivor.json';
 import { useSolanaGame } from '@/hooks/useSolanaGame';
 import type { Game } from '@/hooks/useSolanaGame';
+import { executeTransaction } from '@/utils/transactionHelper';
 import {
     Shield,
     Play,
@@ -107,85 +108,103 @@ export default function AdminDashboard() {
     const adminStartGame = async (gamePubkey: PublicKey, gameId: number) => {
         if (!solanaGame.program || !wallet.publicKey) return;
 
-        setActionLoading(`start-${gameId}`);
-        try {
-            const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
-                [Buffer.from('game_registry')],
-                PROGRAM_ID
-            );
+        await executeTransaction({
+            operation: async () => {
+                const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
+                    [Buffer.from('game_registry')],
+                    PROGRAM_ID
+                );
 
-            const tx = await solanaGame.program.methods
-                .adminStartGame()
-                .accounts({
-                    game: gamePubkey,
-                    gameRegistry: gameRegistryPDA,
-                    admin: wallet.publicKey,
-                })
-                .rpc();
-
-            toast.success('Game started successfully!');
-            await solanaGame.refreshGames();
-        } catch (error: any) {
-            console.error('Error starting game:', error);
-            toast.error('Failed to start game: ' + error.message);
-        }
-        setActionLoading(null);
+                return await solanaGame.program!.methods
+                    .adminStartGame()
+                    .accounts({
+                        game: gamePubkey,
+                        gameRegistry: gameRegistryPDA,
+                        admin: wallet.publicKey!,
+                    })
+                    .rpc();
+            },
+            setLoading: (loading) => setActionLoading(loading ? `start-${gameId}` : null),
+            onSuccess: async () => {
+                toast.success('Game started successfully!');
+                await solanaGame.refreshGames();
+            },
+            onError: (error) => {
+                console.error('Error starting game:', error);
+                toast.error('Failed to start game: ' + error.message);
+            },
+            successMessage: 'Game started!',
+            errorMessage: 'Failed to start game',
+            connection: solanaGame.program.provider.connection,
+        });
     };
 
     const adminAdvancePhase = async (gamePubkey: PublicKey, gameId: number) => {
         if (!solanaGame.program || !wallet.publicKey) return;
 
-        setActionLoading(`advance-${gameId}`);
-        try {
-            const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
-                [Buffer.from('game_registry')],
-                PROGRAM_ID
-            );
+        await executeTransaction({
+            operation: async () => {
+                const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
+                    [Buffer.from('game_registry')],
+                    PROGRAM_ID
+                );
 
-            const tx = await solanaGame.program.methods
-                .adminAdvancePhase()
-                .accounts({
-                    game: gamePubkey,
-                    gameRegistry: gameRegistryPDA,
-                    admin: wallet.publicKey,
-                })
-                .rpc();
-
-            toast.success('Phase advanced successfully!');
-            await solanaGame.refreshGames();
-        } catch (error: any) {
-            console.error('Error advancing phase:', error);
-            toast.error('Failed to advance phase: ' + error.message);
-        }
-        setActionLoading(null);
+                return await solanaGame.program!.methods
+                    .adminAdvancePhase()
+                    .accounts({
+                        game: gamePubkey,
+                        gameRegistry: gameRegistryPDA,
+                        admin: wallet.publicKey!,
+                    })
+                    .rpc();
+            },
+            setLoading: (loading) => setActionLoading(loading ? `advance-${gameId}` : null),
+            onSuccess: async () => {
+                toast.success('Phase advanced successfully!');
+                await solanaGame.refreshGames();
+            },
+            onError: (error) => {
+                console.error('Error advancing phase:', error);
+                toast.error('Failed to advance phase: ' + error.message);
+            },
+            successMessage: 'Phase advanced!',
+            errorMessage: 'Failed to advance phase',
+            connection: solanaGame.program.provider.connection,
+        });
     };
 
     const adminClosePurge = async (gamePubkey: PublicKey, game: Game) => {
         if (!solanaGame.program || !wallet.publicKey) return;
 
-        setActionLoading(`close-${game.gameId}`);
-        try {
-            const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
-                [Buffer.from('game_registry')],
-                PROGRAM_ID
-            );
+        await executeTransaction({
+            operation: async () => {
+                const [gameRegistryPDA] = PublicKey.findProgramAddressSync(
+                    [Buffer.from('game_registry')],
+                    PROGRAM_ID
+                );
 
-            const tx = await solanaGame.program.methods
-                .adminClosePurgeNoReady()
-                .accounts({
-                    game: gamePubkey,
-                    gameRegistry: gameRegistryPDA,
-                    admin: wallet.publicKey,
-                })
-                .rpc();
-
-            toast.success('Game closed and funds redistributed!');
-            await solanaGame.refreshGames();
-        } catch (error: any) {
-            console.error('Error closing game:', error);
-            toast.error('Failed to close game: ' + error.message);
-        }
-        setActionLoading(null);
+                return await solanaGame.program!.methods
+                    .adminClosePurgeNoReady()
+                    .accounts({
+                        game: gamePubkey,
+                        gameRegistry: gameRegistryPDA,
+                        admin: wallet.publicKey!,
+                    })
+                    .rpc();
+            },
+            setLoading: (loading) => setActionLoading(loading ? `close-${game.gameId}` : null),
+            onSuccess: async () => {
+                toast.success('Game closed and funds redistributed!');
+                await solanaGame.refreshGames();
+            },
+            onError: (error) => {
+                console.error('Error closing game:', error);
+                toast.error('Failed to close game: ' + error.message);
+            },
+            successMessage: 'Game closed successfully!',
+            errorMessage: 'Failed to close game',
+            connection: solanaGame.program.provider.connection,
+        });
     };
 
     const canStartGame = (game: Game) => {
