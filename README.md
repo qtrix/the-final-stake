@@ -169,8 +169,8 @@ Go bigger to compete for substantial prizes. Use your DeFi knowledge to maximize
 
 - **Website**: [final-stake.xyz](https://final-stake.xyz)
 - **Documentation**: [Whitepaper](https://finalstake.gitbook.io/final-stake)
-- **X**: [@FinalStake](https://x.com/_final_stake) (example)
-- **Discord**: [Join our community](https://discord.gg/gxrM6XxA) (example)
+- **X**: [@FinalStake](https://x.com/_final_stake) 
+- **Discord**: [Join our community](https://discord.gg/gxrM6XxA) 
 
 ## FAQ
 
@@ -184,7 +184,7 @@ A: You'll gain valuable knowledge worth far more than your entry fee. Think of i
 A: Yes! You can enter with any amount you're comfortable risking. Higher stakes mean bigger potential prizes.
 
 **Q: How long does a game last?**  
-A: Each game runs for 24 hours with three 8-hour phases.
+A: Each game runs for 24 hours(configurable) with three 8-hour phases.
 
 **Q: Is it fair for small players?**  
 A: Yes! Anti-whale mechanics ensure that skill matters more than starting capital.
