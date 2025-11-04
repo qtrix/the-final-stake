@@ -1,4 +1,4 @@
-// src/pages/PurgeGameMultiplayer.tsx - ENHANCED VISUALS
+// src/pages/PurgeGameMultiplayer.tsx - ULTRA-MODERN POWER-UPS DESIGN
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -131,18 +131,17 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 return updated;
             });
         }, []),
-        onWinnerDeclared: useCallback((winnerId, prizeAmount) => {  // ✅ MODIFICAT
+        onWinnerDeclared: useCallback((winnerId, prizeAmount) => {
             console.log('[PurgeGame] 🏆 Winner declared:', winnerId.slice(0, 8));
             setGameEnded(true);
             setWinnerDeclared(true);
-            setServerWinner(winnerId); // ✅ LINIA NOUĂ
+            setServerWinner(winnerId);
 
             if (winnerId !== wallet.publicKey?.toBase58()) {
                 toast.success('🏆 Winner declared!');
             }
         }, [wallet.publicKey]),
 
-        // ✅ ADAUGĂ ACEST HANDLER NOU:
         onGameEnded: useCallback(() => {
             console.log('[PurgeGame] 🛑 Game ended by server');
             setIsGameEnded(true);
@@ -191,8 +190,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
     const { declareWinner, isProcessingWinner } = useGameWinnerFlow({
         gameId,
         sendWinner,
-
-        // ✅ ADAUGĂ acești 3 parametri:
         serverWinner: serverWinner,
         serverGameStatus: isGameEnded || gameEnded ? 'ended' : 'active',
         serverPrizeAmount: prizePool,
@@ -846,7 +843,6 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
         }
 
         if (newPlayer.alive && (newPlayer.x !== myPlayer.x || newPlayer.y !== myPlayer.y || newPlayer.hp !== myPlayer.hp)) {
-            // ✅ Nu trimite update dacă jocul s-a terminat
             if (!isGameEnded && !gameEnded) {
                 setMyPlayer(newPlayer);
                 throttledSendUpdate(newPlayer);
@@ -879,13 +875,11 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
 
         const aliveCount = Array.from(allPlayers.values()).filter(p => p.alive).length;
 
-        // ✅ Când rămâne un singur jucător alive
         if (aliveCount === 1 && myPlayer.alive) {
             console.log('[PurgeGame] 🏆 I am the winner! Declaring...');
 
             setWinnerDeclared(true);
             setServerWinner(myPlayer.id);
-            // ✅ Folosește noul hook pentru a declara winner-ul
             declareWinner(myPlayer.id, prizePool * 0.95);
         }
     }, [myPlayer, allPlayers, gameStarted, gameEnded, winnerDeclared, isProcessingWinner, isGameEnded, declareWinner]);
@@ -1088,63 +1082,115 @@ const PurgeGameMultiplayer: React.FC<PurgeGameMultiplayerProps> = ({
                 </div>
             </div>
 
-            {/* Enhanced Power-ups Panel */}
-            <div className="fixed bottom-4 right-4 z-40">
-                <div className="glass-panel p-6 shadow-2xl min-w-[260px] neon-border border-cyan-500/50">
-                    <div className="text-center mb-4">
-                        <h3 className="text-2xl font-black mb-2 animate-neon-pulse" style={{ color: '#00ffff' }}>
-                            POWER-UPS
-                        </h3>
-                        <p className="text-sm text-gray-400 font-semibold">Press hotkey to activate</p>
+            {/* 🔥 ULTRA-MODERN POWER-UPS - Compact Icon Buttons */}
+            <div className="fixed top-32 right-6 z-40 space-y-3">
+                {/* Speed Boost */}
+                <button
+                    onClick={() => buyPowerUp('speed')}
+                    disabled={virtualBalance < getSpeedCost}
+                    className="group relative w-20 h-20 transition-all duration-300 hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                        filter: virtualBalance >= getSpeedCost ? 'drop-shadow(0 0 20px rgba(0,255,255,0.6))' : 'none'
+                    }}
+                >
+                    {/* Glow effect */}
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-500/30 blur-xl group-hover:blur-2xl transition-all"></div>
+
+                    {/* Main button */}
+                    <div className="relative w-full h-full rounded-xl border-2 border-cyan-400/50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-1 group-hover:border-cyan-400 group-hover:bg-cyan-950/40 transition-all">
+                        <Zap className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
+                        <span className="text-[10px] font-black text-cyan-400 group-hover:text-cyan-300">
+                            {getSpeedCost.toFixed(0)}
+                        </span>
                     </div>
 
-                    <div className="space-y-3">
-                        <button
-                            onClick={() => buyPowerUp('speed')}
-                            disabled={virtualBalance < getSpeedCost}
-                            className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-700 disabled:to-gray-800 disabled:opacity-50 text-white py-3 px-4 rounded-lg font-bold transition-all shadow-lg hover:shadow-cyan-500/50 hover:scale-105"
-                        >
-                            <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-3">
-                                    <Zap className="w-5 h-5" />
-                                    <span className="text-lg">SPEED BOOST</span>
-                                </div>
-                                <span className="text-sm bg-black/40 px-3 py-1 rounded-full font-black">1</span>
-                            </div>
-                            <div className="text-sm font-semibold opacity-90">{getSpeedCost.toFixed(2)} vSOL</div>
-                        </button>
-
-                        <button
-                            onClick={() => buyPowerUp('shield')}
-                            disabled={virtualBalance < getShieldCost || myPlayer?.hasShield}
-                            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-700 disabled:to-gray-800 disabled:opacity-50 text-white py-3 px-4 rounded-lg font-bold transition-all shadow-lg hover:shadow-purple-500/50 hover:scale-105"
-                        >
-                            <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-3">
-                                    <Shield className="w-5 h-5" />
-                                    <span className="text-lg">SHIELD</span>
-                                </div>
-                                <span className="text-sm bg-black/40 px-3 py-1 rounded-full font-black">2</span>
-                            </div>
-                            <div className="text-sm font-semibold opacity-90">{getShieldCost.toFixed(2)} vSOL</div>
-                        </button>
-
-                        <button
-                            onClick={() => buyPowerUp('health')}
-                            disabled={virtualBalance < getHealthCost || (myPlayer?.hp ?? 0) >= (myPlayer?.maxHp ?? 100)}
-                            className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 disabled:from-gray-700 disabled:to-gray-800 disabled:opacity-50 text-white py-3 px-4 rounded-lg font-bold transition-all shadow-lg hover:shadow-red-500/50 hover:scale-105"
-                        >
-                            <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-3">
-                                    <Heart className="w-5 h-5" />
-                                    <span className="text-lg">HEAL</span>
-                                </div>
-                                <span className="text-sm bg-black/40 px-3 py-1 rounded-full font-black">3</span>
-                            </div>
-                            <div className="text-sm font-semibold opacity-90">{getHealthCost.toFixed(2)} vSOL</div>
-                        </button>
+                    {/* Hotkey indicator */}
+                    <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-cyan-500 border-2 border-black flex items-center justify-center">
+                        <span className="text-xs font-black text-black">1</span>
                     </div>
-                </div>
+
+                    {/* Tooltip */}
+                    <div className="absolute right-24 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        <div className="bg-black/95 border border-cyan-400/50 rounded-lg px-3 py-2 whitespace-nowrap">
+                            <p className="text-sm font-bold text-cyan-400">SPEED BOOST</p>
+                            <p className="text-xs text-gray-400">{getSpeedCost.toFixed(2)} vSOL</p>
+                        </div>
+                    </div>
+                </button>
+
+                {/* Shield */}
+                <button
+                    onClick={() => buyPowerUp('shield')}
+                    disabled={virtualBalance < getShieldCost || myPlayer?.hasShield}
+                    className="group relative w-20 h-20 transition-all duration-300 hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                        filter: (virtualBalance >= getShieldCost && !myPlayer?.hasShield) ? 'drop-shadow(0 0 20px rgba(168,85,247,0.6))' : 'none'
+                    }}
+                >
+                    {/* Glow effect */}
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-purple-500/30 to-pink-500/30 blur-xl group-hover:blur-2xl transition-all"></div>
+
+                    {/* Main button */}
+                    <div className="relative w-full h-full rounded-xl border-2 border-purple-400/50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-1 group-hover:border-purple-400 group-hover:bg-purple-950/40 transition-all">
+                        <Shield className="w-8 h-8 text-purple-400 group-hover:text-purple-300 transition-colors" />
+                        <span className="text-[10px] font-black text-purple-400 group-hover:text-purple-300">
+                            {getShieldCost.toFixed(0)}
+                        </span>
+                    </div>
+
+                    {/* Active indicator */}
+                    {myPlayer?.hasShield && (
+                        <div className="absolute inset-0 rounded-xl border-2 border-purple-400 bg-purple-500/20 animate-pulse"></div>
+                    )}
+
+                    {/* Hotkey indicator */}
+                    <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-purple-500 border-2 border-black flex items-center justify-center">
+                        <span className="text-xs font-black text-black">2</span>
+                    </div>
+
+                    {/* Tooltip */}
+                    <div className="absolute right-24 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        <div className="bg-black/95 border border-purple-400/50 rounded-lg px-3 py-2 whitespace-nowrap">
+                            <p className="text-sm font-bold text-purple-400">SHIELD</p>
+                            <p className="text-xs text-gray-400">{getShieldCost.toFixed(2)} vSOL</p>
+                            {myPlayer?.hasShield && <p className="text-xs text-purple-400 mt-1">ACTIVE</p>}
+                        </div>
+                    </div>
+                </button>
+
+                {/* Health */}
+                <button
+                    onClick={() => buyPowerUp('health')}
+                    disabled={virtualBalance < getHealthCost || (myPlayer?.hp ?? 0) >= (myPlayer?.maxHp ?? 100)}
+                    className="group relative w-20 h-20 transition-all duration-300 hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                        filter: (virtualBalance >= getHealthCost && (myPlayer?.hp ?? 0) < (myPlayer?.maxHp ?? 100)) ? 'drop-shadow(0 0 20px rgba(239,68,68,0.6))' : 'none'
+                    }}
+                >
+                    {/* Glow effect */}
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-red-500/30 to-orange-500/30 blur-xl group-hover:blur-2xl transition-all"></div>
+
+                    {/* Main button */}
+                    <div className="relative w-full h-full rounded-xl border-2 border-red-400/50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-1 group-hover:border-red-400 group-hover:bg-red-950/40 transition-all">
+                        <Heart className="w-8 h-8 text-red-400 group-hover:text-red-300 transition-colors" />
+                        <span className="text-[10px] font-black text-red-400 group-hover:text-red-300">
+                            {getHealthCost.toFixed(0)}
+                        </span>
+                    </div>
+
+                    {/* Hotkey indicator */}
+                    <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 border-2 border-black flex items-center justify-center">
+                        <span className="text-xs font-black text-black">3</span>
+                    </div>
+
+                    {/* Tooltip */}
+                    <div className="absolute right-24 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        <div className="bg-black/95 border border-red-400/50 rounded-lg px-3 py-2 whitespace-nowrap">
+                            <p className="text-sm font-bold text-red-400">HEAL +30</p>
+                            <p className="text-xs text-gray-400">{getHealthCost.toFixed(2)} vSOL</p>
+                        </div>
+                    </div>
+                </button>
             </div>
 
             {/* Enhanced Game Canvas */}
