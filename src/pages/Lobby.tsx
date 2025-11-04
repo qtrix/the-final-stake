@@ -168,7 +168,7 @@ export default function Lobby() {
           playerStat.wins += 1;
 
           // ✅ CALCULATE PRIZE POOL: (players × entry fee) - 1% platform fee
-          const calculatedPrizePool = game.currentPlayers * game.entryFee * 0.99;
+          const calculatedPrizePool = game.currentPlayers * game.entryFee * 0.95;
           playerStat.earnings += calculatedPrizePool;
 
           console.log(`[Lobby Stats] ✅ Added ${calculatedPrizePool.toFixed(4)} SOL (${game.currentPlayers} players × ${game.entryFee} SOL) to ${playerAddress.slice(0, 8)}`);
@@ -598,7 +598,7 @@ export default function Lobby() {
         console.log('✅ Prize claimed successfully!');
         toast({
           title: "Prize Claimed!",
-          description: `You've claimed ${(targetGame.prizePool * 0.99).toFixed(4)} SOL!`,
+          description: `You've claimed ${(targetGame.prizePool * 0.95).toFixed(4)} SOL!`,
         });
 
         // ✅ CRITICAL: Aggressive refresh loop to ensure phase3PrizeClaimed updates
@@ -1171,7 +1171,7 @@ export default function Lobby() {
                           {game.phase3Winner.slice(0, 8)}...{game.phase3Winner.slice(-8)}
                         </div>
                         <div className="text-xs mt-1" style={{ color: 'hsl(50, 100%, 50%)' }}>
-                          Prize: {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
+                          Prize: {(game.currentPlayers * game.entryFee * 0.95).toFixed(2)} SOL
                           {game.phase3PrizeClaimed ? ' ✓ Claimed' : ' (Unclaimed)'}
                         </div>
                       </div>
@@ -1188,7 +1188,7 @@ export default function Lobby() {
                       <div className="flex items-center gap-2">
                         <Trophy className="w-4 h-4" style={{ color: 'hsl(50, 100%, 60%)' }} />
                         <span className="text-sm font-medium" style={{ color: 'hsl(50, 100%, 60%)' }}>
-                          {(game.currentPlayers * game.entryFee * 0.99).toFixed(2)} SOL
+                          {(game.currentPlayers * game.entryFee * 0.95).toFixed(2)} SOL
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1439,7 +1439,7 @@ export default function Lobby() {
                     {selectedGame.phase3Winner.slice(0, 12)}...{selectedGame.phase3Winner.slice(-12)}
                   </div>
                   <div className="text-sm" style={{ color: 'hsl(50, 100%, 50%)' }}>
-                    Prize: {(selectedGame.currentPlayers * selectedGame.entryFee * 0.99).toFixed(4)} SOL
+                    Prize: {(selectedGame.currentPlayers * selectedGame.entryFee * 0.95).toFixed(4)} SOL
                     {selectedGame.phase3PrizeClaimed ? ' ✓ Claimed' : ' (Unclaimed)'}
                   </div>
                 </div>
@@ -1552,7 +1552,7 @@ export default function Lobby() {
                       }}
                     >
                       <Trophy className="w-4 h-4" />
-                      {solanaGame.loading || isClaiming ? 'Claiming...' : `Claim Prize (${(selectedGame.prizePool * 0.99).toFixed(4)} SOL)`}
+                      {solanaGame.loading || isClaiming ? 'Claiming...' : `Claim Prize (${(selectedGame.prizePool * 0.95).toFixed(4)} SOL)`}
                     </button>
                   )}
 
