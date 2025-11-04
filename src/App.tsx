@@ -35,8 +35,8 @@ const App = () => (
           <Route path="/roadmap" element={<Roadmap />} />
           <Route path="/phase1" element={<Phase1 />} />
           <Route path="/phase2" element={<Phase2 />} />
-          <Route path="/phase3" element={<Phase3Lobby />} /> {/* 👈 ADD THIS */}
-          <Route path="/phase3/winner" element={<Phase3Winner />} />
+          <Route path="/phase3" element={<Phase3Lobby />} />
+          <Route path="/phase3-winner" element={<Phase3Winner />} />
           <Route path="/games/crypto-trivia" element={<CryptoTrivia />} />
           <Route path="/games/rock-paper-scissors" element={<RockPaperScissors />} />
           <Route path="/games/speed-trading" element={<SpeedTrading />} />
